@@ -1102,20 +1102,45 @@
       if (!profile || !profile.name) throw new Error(`Ticker not found: ${ticker}. Check the symbol is a valid US stock.`);
       if (!quote || !quote.c) throw new Error(`No quote data returned for ${ticker}.`);
 
-      // Alpha Vantage — daily adjusted prices (compact = last 100 days, full = up to 20 years)
-      // We need 200+ days for the 200MA so we use outputsize=full
-      const avData = await av({ function: 'TIME_SERIES_DAILY_ADJUSTED', symbol: ticker, outputsize: 'full' });
+      // Alpha Vantage — daily adjusted prices
+      // Cache in localStorage keyed by ticker+date to avoid burning daily calls on re-analysis
+      const today = new Date().toISOString().slice(0,10);
+      const cacheKey = `omc_av_${ticker}_${today}`;
+      let closes, volumes;
 
-      if (avData['Error Message']) throw new Error(`Alpha Vantage: ticker ${ticker} not found.`);
-      if (avData['Note'] || avData['Information']) throw new Error(`Alpha Vantage rate limit reached. Wait 1 minute and try again (free tier: 25 calls/day).`);
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        closes  = parsed.closes;
+        volumes = parsed.volumes;
+        console.log(`Using cached AV price data for ${ticker} (${today})`);
+      } else {
+        const avData = await av({ function: 'TIME_SERIES_DAILY_ADJUSTED', symbol: ticker, outputsize: 'full' });
 
-      const timeSeries = avData['Time Series (Daily)'];
-      if (!timeSeries) throw new Error(`Alpha Vantage returned no price history for ${ticker}.`);
+        if (avData['Error Message']) throw new Error(`Alpha Vantage: ticker ${ticker} not found.`);
+        if (avData['Note'] || avData['Information']) {
+          const resetTime = new Date();
+          resetTime.setUTCHours(24, 0, 0, 0);
+          const hoursLeft = Math.ceil((resetTime - new Date()) / 3600000);
+          throw new Error(`Alpha Vantage daily limit reached (25 calls/day free tier). Resets in ~${hoursLeft}h at midnight UTC. Try a different ticker — each ticker is only fetched once per day.`);
+        }
 
-      // Convert to sorted array of closes and volumes (newest first → oldest)
-      const dates = Object.keys(timeSeries).sort((a,b) => b.localeCompare(a));
-      const closes  = dates.map(d => parseFloat(timeSeries[d]['5. adjusted close']));
-      const volumes = dates.map(d => parseFloat(timeSeries[d]['6. volume']));
+        const timeSeries = avData['Time Series (Daily)'];
+        if (!timeSeries) throw new Error(`Alpha Vantage returned no price history for ${ticker}.`);
+
+        const dates = Object.keys(timeSeries).sort((a,b) => b.localeCompare(a));
+        closes  = dates.map(d => parseFloat(timeSeries[d]['5. adjusted close']));
+        volumes = dates.map(d => parseFloat(timeSeries[d]['6. volume']));
+
+        // Cache today's data — expires naturally when date changes
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ closes, volumes }));
+          // Clean up old cache entries (keep storage tidy)
+          Object.keys(localStorage)
+            .filter(k => k.startsWith('omc_av_') && !k.includes(today))
+            .forEach(k => localStorage.removeItem(k));
+        } catch(e) { /* storage full — ignore */ }
+      }
 
       currentData = { ticker, quote, profile, metrics, earnings, closes, volumes };
 
