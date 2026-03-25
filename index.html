@@ -993,14 +993,13 @@
 </div>
 
 <script>
-  const FMP_KEY = 'HuT1D7EmZkGq7basKbrzNWntyaptAzGG';
   const CLAUDE_KEY_STORAGE = 'omc_claude_key';
 
-  // ── CLAUDE API KEY PROMPT ─────────────────────────────────────────────
+  // ── CLAUDE API KEY ────────────────────────────────────────────────────
   function getClaudeKey() {
     let k = localStorage.getItem(CLAUDE_KEY_STORAGE);
     if (!k) {
-      k = prompt('Enter your Anthropic API key (stored locally, never sent to any server except Anthropic):');
+      k = prompt('Enter your Anthropic API key (stored locally in your browser only):');
       if (k) localStorage.setItem(CLAUDE_KEY_STORAGE, k.trim());
     }
     return k;
@@ -1009,26 +1008,19 @@
   // ── WATCHLIST ─────────────────────────────────────────────────────────
   let watchlist = JSON.parse(localStorage.getItem('omc_watchlist') || '[]');
 
-  function saveWatchlist() {
-    localStorage.setItem('omc_watchlist', JSON.stringify(watchlist));
-  }
+  function saveWatchlist() { localStorage.setItem('omc_watchlist', JSON.stringify(watchlist)); }
 
   function renderWatchlist() {
     const el = document.getElementById('watchlistSection');
     const countEl = document.getElementById('watchlistCount');
     countEl.textContent = watchlist.length + ' Stock' + (watchlist.length !== 1 ? 's' : '');
-
     if (watchlist.length === 0) {
       el.innerHTML = '<div class="watchlist-empty">No stocks on watchlist yet — run an analysis and add qualifying stocks</div>';
       return;
     }
-
-    let html = `<table class="watchlist-table">
-      <thead><tr>
-        <th>Ticker</th><th>Company</th><th>Added</th>
-        <th>Score</th><th>Price at Add</th><th>Technical Notes</th><th></th>
-      </tr></thead><tbody>`;
-
+    let html = `<table class="watchlist-table"><thead><tr>
+      <th>Ticker</th><th>Company</th><th>Added</th><th>Score</th><th>Price at Add</th><th>Technical Notes</th><th></th>
+    </tr></thead><tbody>`;
     watchlist.forEach((item, i) => {
       const cls = item.score >= 6 ? 'strong' : item.score >= 4 ? 'moderate' : 'weak';
       html += `<tr>
@@ -1042,16 +1034,12 @@
         <td><button class="wl-remove-btn" onclick="removeFromWatchlist(${i})">Remove</button></td>
       </tr>`;
     });
-
     html += '</tbody></table>';
     el.innerHTML = html;
   }
 
   function addToWatchlist(ticker, name, score, price) {
-    if (watchlist.find(w => w.ticker === ticker)) {
-      alert(ticker + ' is already on your watchlist.');
-      return;
-    }
+    if (watchlist.find(w => w.ticker === ticker)) { alert(ticker + ' is already on your watchlist.'); return; }
     watchlist.unshift({
       ticker, name, score, price,
       date: new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'2-digit' }),
@@ -1061,23 +1049,13 @@
     renderWatchlist();
   }
 
-  function removeFromWatchlist(i) {
-    watchlist.splice(i, 1);
-    saveWatchlist();
-    renderWatchlist();
-  }
+  function removeFromWatchlist(i) { watchlist.splice(i, 1); saveWatchlist(); renderWatchlist(); }
+  function updateNote(i, val) { watchlist[i].notes = val; saveWatchlist(); }
 
-  function updateNote(i, val) {
-    watchlist[i].notes = val;
-    saveWatchlist();
-  }
-
-  // ── LOADING & ERROR ───────────────────────────────────────────────────
-  let loadingMessages = [
-    'Fetching fundamental data...',
-    'Calculating EPS acceleration...',
-    'Running SEPA trend template...',
-    'Scoring against 8 frameworks...',
+  // ── LOADING ───────────────────────────────────────────────────────────
+  const loadingMessages = [
+    'Fetching fundamental data...','Calculating EPS acceleration...',
+    'Running SEPA trend template...','Scoring against 8 frameworks...',
     'Computing consensus verdict...'
   ];
   let loadingInterval;
@@ -1088,607 +1066,403 @@
     el.classList.add('active');
     let i = 0;
     msg.textContent = loadingMessages[0];
-    loadingInterval = setInterval(() => {
-      i = (i + 1) % loadingMessages.length;
-      msg.textContent = loadingMessages[i];
-    }, 1800);
+    loadingInterval = setInterval(() => { i = (i+1) % loadingMessages.length; msg.textContent = loadingMessages[i]; }, 1800);
   }
+  function hideLoading() { document.getElementById('loadingState').classList.remove('active'); clearInterval(loadingInterval); }
+  function showError(msg) { const el = document.getElementById('errorBar'); el.textContent = '⚠ ' + msg; el.classList.add('active'); }
+  function clearError() { document.getElementById('errorBar').classList.remove('active'); }
 
-  function hideLoading() {
-    document.getElementById('loadingState').classList.remove('active');
-    clearInterval(loadingInterval);
-  }
-
-  function showError(msg) {
-    const el = document.getElementById('errorBar');
-    el.textContent = '⚠ ' + msg;
-    el.classList.add('active');
-  }
-
-  function clearError() {
-    document.getElementById('errorBar').classList.remove('active');
-  }
-
-  // ── FMP FETCH HELPERS ─────────────────────────────────────────────────
-  async function fmp(endpoint) {
-    const sep = endpoint.includes('?') ? '&' : '?';
-    const url = `https://financialmodelingprep.com/api/${endpoint}${sep}apikey=${FMP_KEY}`;
+  // ── YAHOO FINANCE FETCH ───────────────────────────────────────────────
+  // Uses allOrigins proxy to bypass CORS on GitHub Pages
+  async function yahooFetch(path) {
+    const base = 'https://query1.finance.yahoo.com';
+    const target = encodeURIComponent(base + path);
+    const url = `https://api.allorigins.win/get?url=${target}`;
     const r = await fetch(url);
-    if (!r.ok) throw new Error('FMP error: ' + r.status);
-    return r.json();
+    if (!r.ok) throw new Error('Network error: ' + r.status);
+    const wrapper = await r.json();
+    return JSON.parse(wrapper.contents);
   }
 
-  // ── MAIN ANALYSIS ─────────────────────────────────────────────────────
+  // ── MAIN DATA FETCH ───────────────────────────────────────────────────
   let currentData = {};
 
   async function runAnalysis() {
     const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
     if (!ticker) return;
-
     clearError();
     document.getElementById('resultsWrapper').classList.remove('active');
     document.getElementById('analyzeBtn').disabled = true;
     showLoading();
 
     try {
-      // Free FMP endpoints only: profile, quote, income-statement, historical prices
-      const [
-        profileArr,
-        quoteArr,
-        incomeArr,
-        incomeAnnualArr,
-        priceHistArr
-      ] = await Promise.all([
-        fmp('v3/profile/' + ticker),
-        fmp('v3/quote/' + ticker),
-        fmp('v3/income-statement/' + ticker + '?period=quarter&limit=8'),
-        fmp('v3/income-statement/' + ticker + '?limit=5'),
-        fmp('v3/historical-price-full/' + ticker + '?timeseries=252')
-      ]);
+      // Yahoo Finance v10 quoteSummary — fetch all modules in one call
+      const modules = [
+        'price',
+        'summaryProfile',
+        'defaultKeyStatistics',
+        'financialData',
+        'incomeStatementHistoryQuarterly',
+        'incomeStatementHistory',
+        'earningsTrend'
+      ].join(',');
 
-      if (!profileArr || profileArr.length === 0) throw new Error('Ticker not found: ' + ticker);
+      const summary = await yahooFetch(`/v10/finance/quoteSummary/${ticker}?modules=${modules}`);
+      const result = summary?.quoteSummary?.result?.[0];
+      if (!result) throw new Error('Ticker not found: ' + ticker);
 
-      const profile = profileArr[0];
-      const quote = quoteArr[0];
+      // Historical prices — v8 chart endpoint
+      const chart = await yahooFetch(`/v8/finance/chart/${ticker}?interval=1d&range=1y`);
+      const chartResult = chart?.chart?.result?.[0];
 
-      // Derive PEG from free data: PE / (annualised EPS growth * 100)
-      const _epsGrowthA = calcAnnualEpsGrowth(incomeAnnualArr);
-      const pegApprox = (quote.pe && _epsGrowthA && _epsGrowthA > 0) ? quote.pe / (_epsGrowthA * 100) : null;
-      // Institutional proxy: market cap > $2B almost always means institutional coverage
-      const instProxy = profile.mktCap > 2e9;
-
-      currentData = {
-        ticker, profile, quote, incomeArr, incomeAnnualArr, priceHistArr,
-        pegApprox, instProxy,
-        metricsArr: [], metricsAnnualArr: [],
-        institutionalArr: instProxy ? [{ proxy: true }] : [],
-        estimatesArr: []
-      };
+      currentData = { ticker, result, chartResult };
 
       renderSnapshot(currentData);
       const scores = renderLegends(currentData);
       await renderConsensus(currentData, scores);
 
-      // Reset chart section
       document.getElementById('chartPreviewWrap').classList.remove('active');
       document.getElementById('chartAnalysisResult').classList.remove('active');
       document.getElementById('chartAnalysisResult').innerHTML = '';
-
       document.getElementById('resultsWrapper').classList.add('active');
 
     } catch(e) {
-      showError(e.message || 'Failed to fetch data. Check ticker and try again.');
+      showError(e.message || 'Failed to fetch data. Check ticker symbol and try again.');
     } finally {
       hideLoading();
       document.getElementById('analyzeBtn').disabled = false;
     }
   }
 
-  // ── SNAPSHOT ──────────────────────────────────────────────────────────
+  // ── HELPERS ───────────────────────────────────────────────────────────
+  function safe(val, fb=null) { return (val === undefined || val === null || val === 'None' || isNaN(val)) ? fb : val; }
   function fmt(n) {
     if (n === null || n === undefined || isNaN(n)) return '—';
-    if (Math.abs(n) >= 1e12) return (n/1e12).toFixed(2) + 'T';
-    if (Math.abs(n) >= 1e9) return (n/1e9).toFixed(2) + 'B';
-    if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(2) + 'M';
+    if (Math.abs(n) >= 1e12) return (n/1e12).toFixed(2)+'T';
+    if (Math.abs(n) >= 1e9)  return (n/1e9).toFixed(2)+'B';
+    if (Math.abs(n) >= 1e6)  return (n/1e6).toFixed(2)+'M';
     return n.toLocaleString();
   }
+  function dp(v,d=2) { return v!==null && v!==undefined ? Number(v).toFixed(d) : '—'; }
+  function calcGrowth(curr, prev) {
+    if (prev===null||curr===null||prev===0) return null;
+    return (curr - prev) / Math.abs(prev);
+  }
+  function avg(arr) { return arr.reduce((a,b)=>a+b,0)/arr.length; }
 
-  function renderSnapshot(d) {
-    const { ticker, profile, quote } = d;
-    const chgPct = quote.changesPercentage;
-    const chgClass = chgPct >= 0 ? 'up' : 'down';
-    const chgSign = chgPct >= 0 ? '+' : '';
-
-    const html = `
-      <div class="snapshot-card" style="animation-delay:0s">
-        <div class="snapshot-main">
-          <div class="snapshot-ticker">${ticker}</div>
-          <div class="snapshot-name">${profile.companyName}</div>
-          <div class="snapshot-tags">
-            <span class="tag">${profile.sector || 'N/A'}</span>
-            <span class="tag">${profile.industry || 'N/A'}</span>
-            <span class="tag">${profile.exchangeShortName || ''}</span>
-            <span class="tag">${profile.country || ''}</span>
-          </div>
-          <div class="snapshot-metrics">
-            <div class="metric-cell">
-              <div class="metric-label">Market Cap</div>
-              <div class="metric-value">$${fmt(profile.mktCap)}</div>
-            </div>
-            <div class="metric-cell">
-              <div class="metric-label">52W High</div>
-              <div class="metric-value">$${(quote.yearHigh||0).toFixed(2)}</div>
-            </div>
-            <div class="metric-cell">
-              <div class="metric-label">52W Low</div>
-              <div class="metric-value">$${(quote.yearLow||0).toFixed(2)}</div>
-            </div>
-            <div class="metric-cell">
-              <div class="metric-label">Avg Volume</div>
-              <div class="metric-value">${fmt(quote.avgVolume)}</div>
-            </div>
-          </div>
-        </div>
-        <div class="snapshot-price-block">
-          <div class="price-big">$${(quote.price||0).toFixed(2)}</div>
-          <div class="price-change ${chgClass}">${chgSign}${(chgPct||0).toFixed(2)}% today</div>
-          <div style="margin-top:12px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">
-            Vol: ${fmt(quote.volume)}
-          </div>
-        </div>
-      </div>`;
-
-    document.getElementById('snapshotCard').innerHTML = html;
+  // ── METRIC EXTRACTORS ─────────────────────────────────────────────────
+  function getQuarterlyEPS(result) {
+    const stmts = result.incomeStatementHistoryQuarterly?.incomeStatementHistory || [];
+    return stmts.map(s => safe(s.dilutedEPS?.raw));
   }
 
-  // ── LEGEND SCORING ENGINE ─────────────────────────────────────────────
-  function safe(val, fallback = null) {
-    return (val === undefined || val === null || isNaN(val)) ? fallback : val;
+  function getAnnualEPS(result) {
+    const stmts = result.incomeStatementHistory?.incomeStatementHistory || [];
+    return stmts.map(s => safe(s.dilutedEPS?.raw));
   }
 
-  function pct(val) { return val !== null ? (val * 100).toFixed(1) + '%' : '—'; }
-  function dp(val, d=2) { return val !== null ? val.toFixed(d) : '—'; }
-
-  function calcEpsGrowthQoQ(incomeArr) {
-    // YoY quarterly EPS growth (Q vs same Q last year)
-    const quarters = incomeArr.map(q => safe(q.eps));
-    if (quarters.length < 5) return null;
-    const recent = quarters[0];
-    const yearAgo = quarters[4];
-    if (!yearAgo || yearAgo === 0) return null;
-    return (recent - yearAgo) / Math.abs(yearAgo);
+  function getQuarterlyRevenue(result) {
+    const stmts = result.incomeStatementHistoryQuarterly?.incomeStatementHistory || [];
+    return stmts.map(s => safe(s.totalRevenue?.raw));
   }
 
-  function calcEpsAcceleration(incomeArr) {
-    // Is most recent QoQ growth higher than prior period?
-    if (incomeArr.length < 6) return null;
-    const g1 = calcGrowth(safe(incomeArr[0].eps), safe(incomeArr[4].eps));
-    const g2 = calcGrowth(safe(incomeArr[1].eps), safe(incomeArr[5].eps));
-    if (g1 === null || g2 === null) return null;
+  function calcEpsGrowthQoQ(result) {
+    // YoY: most recent quarter vs same quarter last year
+    const eps = getQuarterlyEPS(result);
+    if (eps.length < 5 || eps[0]===null || eps[4]===null || eps[4]===0) return null;
+    return calcGrowth(eps[0], eps[4]);
+  }
+
+  function calcEpsAcceleration(result) {
+    const eps = getQuarterlyEPS(result);
+    if (eps.length < 6) return null;
+    const g1 = calcGrowth(eps[0], eps[4]);
+    const g2 = calcGrowth(eps[1], eps[5]);
+    if (g1===null||g2===null) return null;
     return g1 > g2;
   }
 
-  function calcGrowth(curr, prev) {
-    if (prev === null || curr === null || prev === 0) return null;
-    return (curr - prev) / Math.abs(prev);
+  function calcAnnualEpsGrowth(result) {
+    const eps = getAnnualEPS(result);
+    if (eps.length < 2 || eps[0]===null || eps[1]===null || eps[1]===0) return null;
+    return calcGrowth(eps[0], eps[1]);
   }
 
-  function calcAnnualEpsGrowth(incomeAnnualArr) {
-    if (incomeAnnualArr.length < 2) return null;
-    return calcGrowth(safe(incomeAnnualArr[0].eps), safe(incomeAnnualArr[1].eps));
+  function calcRevenueGrowthQoQ(result) {
+    const rev = getQuarterlyRevenue(result);
+    if (rev.length < 5 || rev[0]===null || rev[4]===null || rev[4]===0) return null;
+    return calcGrowth(rev[0], rev[4]);
   }
 
-  function calcRevenueGrowthQoQ(incomeArr) {
-    if (incomeArr.length < 5) return null;
-    return calcGrowth(safe(incomeArr[0].revenue), safe(incomeArr[4].revenue));
+  function getPriceData(chartResult) {
+    if (!chartResult) return [];
+    const closes = chartResult.indicators?.quote?.[0]?.close || [];
+    return closes.filter(c => c !== null && c !== undefined);
   }
 
-  function calc52WPosition(quote) {
-    const { price, yearHigh, yearLow } = quote;
-    if (!yearHigh || !yearLow || yearHigh === yearLow) return null;
-    return (price - yearLow) / (yearHigh - yearLow);
+  function getVolumes(chartResult) {
+    if (!chartResult) return [];
+    const vols = chartResult.indicators?.quote?.[0]?.volume || [];
+    return vols.filter(v => v !== null && v !== undefined);
   }
 
-  function calcAbove52WLow(quote) {
-    if (!quote.yearLow || quote.yearLow === 0) return null;
-    return (quote.price - quote.yearLow) / quote.yearLow;
-  }
-
-  function calcMATrend(priceHistArr) {
-    const prices = (priceHistArr.historical || []).map(p => p.close).slice(0, 252).reverse();
+  function calcMATrend(chartResult) {
+    const prices = getPriceData(chartResult);
     if (prices.length < 200) return null;
-    const ma50 = avg(prices.slice(-50));
+    const ma50  = avg(prices.slice(-50));
     const ma150 = avg(prices.slice(-150));
     const ma200 = avg(prices.slice(-200));
-    const ma200_1m = avg(prices.slice(-230, -30));
-    const current = prices[prices.length - 1];
+    const ma200_30ago = prices.length >= 230 ? avg(prices.slice(-230,-30)) : null;
+    const current = prices[prices.length-1];
     return {
-      above50: current > ma50,
+      above50:  current > ma50,
       above150: current > ma150,
       above200: current > ma200,
       ma150aboveMa200: ma150 > ma200,
-      ma200trending: ma200 > ma200_1m,
+      ma200trending: ma200_30ago ? ma200 > ma200_30ago : null,
       ma50, ma150, ma200, current
     };
   }
 
-  function avg(arr) { return arr.reduce((a,b) => a+b, 0) / arr.length; }
-
-  function calcRelStrength(priceHistArr, period = 63) {
-    const prices = (priceHistArr.historical || []).map(p => p.close).slice(0, period + 1).reverse();
-    if (prices.length < period) return null;
-    return calcGrowth(prices[prices.length - 1], prices[0]);
+  function calcRelStrength(chartResult, period=63) {
+    const prices = getPriceData(chartResult);
+    if (prices.length < period+1) return null;
+    const slice = prices.slice(-(period+1));
+    return calcGrowth(slice[slice.length-1], slice[0]);
   }
 
-  function calcVolumeTrend(priceHistArr) {
-    const hist = (priceHistArr.historical || []).slice(0, 30);
-    if (hist.length < 20) return null;
-    const recent = avg(hist.slice(0, 10).map(p => p.volume));
-    const older = avg(hist.slice(10, 30).map(p => p.volume));
+  function calcVolumeTrend(chartResult) {
+    const vols = getVolumes(chartResult);
+    if (vols.length < 20) return null;
+    const recent = avg(vols.slice(-10));
+    const older  = avg(vols.slice(-30,-10));
+    if (older===0) return null;
     return recent / older;
   }
 
-  function calcEstimateRevision(estimatesArr) {
-    return null; // requires paid FMP tier
+  function calc52WPosition(result) {
+    const high = safe(result.price?.fiftyTwoWeekHigh?.raw);
+    const low  = safe(result.price?.fiftyTwoWeekLow?.raw);
+    const curr = safe(result.price?.regularMarketPrice?.raw);
+    if (!high||!low||high===low) return null;
+    return (curr-low)/(high-low);
   }
 
-  function hasInstitutionalOwnership(institutionalArr) {
-    return !!(institutionalArr && institutionalArr.length > 0);
+  function calcAboveLow(result) {
+    const low  = safe(result.price?.fiftyTwoWeekLow?.raw);
+    const curr = safe(result.price?.regularMarketPrice?.raw);
+    if (!low||low===0) return null;
+    return (curr-low)/low;
   }
 
-  // ── RENDER LEGENDS ────────────────────────────────────────────────────
+  // ── SNAPSHOT RENDER ───────────────────────────────────────────────────
+  function renderSnapshot(d) {
+    const { ticker, result } = d;
+    const price   = safe(result.price);
+    const profile = safe(result.summaryProfile, {});
+    const stats   = safe(result.defaultKeyStatistics, {});
+    const finData = safe(result.financialData, {});
+
+    const curr    = safe(price?.regularMarketPrice?.raw, 0);
+    const chgPct  = safe(price?.regularMarketChangePercent?.raw, 0) * 100;
+    const chgSign = chgPct >= 0 ? '+' : '';
+    const chgCls  = chgPct >= 0 ? 'up' : 'down';
+    const hi52    = safe(price?.fiftyTwoWeekHigh?.raw, 0);
+    const lo52    = safe(price?.fiftyTwoWeekLow?.raw, 0);
+    const mktCap  = safe(price?.marketCap?.raw);
+    const vol     = safe(price?.regularMarketVolume?.raw);
+    const avgVol  = safe(price?.averageDailyVolume3Month?.raw);
+    const sector  = profile?.sector || 'N/A';
+    const industry= profile?.industry || 'N/A';
+    const exchange= price?.exchangeName || '';
+    const name    = price?.longName || price?.shortName || ticker;
+
+    document.getElementById('snapshotCard').innerHTML = `
+      <div class="snapshot-card">
+        <div class="snapshot-main">
+          <div class="snapshot-ticker">${ticker}</div>
+          <div class="snapshot-name">${name}</div>
+          <div class="snapshot-tags">
+            <span class="tag">${sector}</span>
+            <span class="tag">${industry}</span>
+            <span class="tag">${exchange}</span>
+          </div>
+          <div class="snapshot-metrics">
+            <div class="metric-cell"><div class="metric-label">Market Cap</div><div class="metric-value">$${fmt(mktCap)}</div></div>
+            <div class="metric-cell"><div class="metric-label">52W High</div><div class="metric-value">$${dp(hi52)}</div></div>
+            <div class="metric-cell"><div class="metric-label">52W Low</div><div class="metric-value">$${dp(lo52)}</div></div>
+            <div class="metric-cell"><div class="metric-label">Avg Volume</div><div class="metric-value">${fmt(avgVol)}</div></div>
+          </div>
+        </div>
+        <div class="snapshot-price-block">
+          <div class="price-big">$${dp(curr)}</div>
+          <div class="price-change ${chgCls}">${chgSign}${dp(chgPct,2)}% today</div>
+          <div style="margin-top:12px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">Vol: ${fmt(vol)}</div>
+        </div>
+      </div>`;
+  }
+
+  // ── LEGEND SCORING ────────────────────────────────────────────────────
   function renderLegends(d) {
-    const { ticker, profile, quote, incomeArr, incomeAnnualArr, priceHistArr, institutionalArr, estimatesArr, pegApprox, instProxy } = d;
+    const { result, chartResult } = d;
 
-    // Pre-calculate all metrics from free data
-    const epsGrowthQ = calcEpsGrowthQoQ(incomeArr);
-    const epsAccel = calcEpsAcceleration(incomeArr);
-    const epsGrowthA = calcAnnualEpsGrowth(incomeAnnualArr);
-    const revGrowthQ = calcRevenueGrowthQoQ(incomeArr);
-    const pos52W = calc52WPosition(quote);
-    const aboveLow = calcAbove52WLow(quote);
-    const maTrend = calcMATrend(priceHistArr);
-    const rs3M = calcRelStrength(priceHistArr, 63);
-    const rs6M = calcRelStrength(priceHistArr, 126);
-    const volumeTrend = calcVolumeTrend(priceHistArr);
-    const estRevision = null; // requires paid tier
-    const hasInst = instProxy; // derived from market cap
+    const epsGrowthQ  = calcEpsGrowthQoQ(result);
+    const epsAccel    = calcEpsAcceleration(result);
+    const epsGrowthA  = calcAnnualEpsGrowth(result);
+    const revGrowthQ  = calcRevenueGrowthQoQ(result);
+    const pos52W      = calc52WPosition(result);
+    const aboveLow    = calcAboveLow(result);
+    const maTrend     = calcMATrend(chartResult);
+    const rs3M        = calcRelStrength(chartResult, 63);
+    const rs6M        = calcRelStrength(chartResult, 126);
+    const volumeTrend = calcVolumeTrend(chartResult);
 
-    const peg = pegApprox; // derived from PE * EPS growth
-    const debtEq = null;   // requires paid tier
-    const mktCap = safe(profile.mktCap);
+    const stats   = result.defaultKeyStatistics || {};
+    const finData = result.financialData || {};
+    const price   = result.price || {};
 
-    // ── 8 LEGEND DEFINITIONS ──────────────────────────────────────────
+    const peg      = safe(stats.pegRatio?.raw);
+    const debtEq   = safe(finData.debtToEquity?.raw);
+    const mktCap   = safe(price.marketCap?.raw, 0);
+    const instProxy = mktCap > 2e9;
+    const currEPS  = getQuarterlyEPS(result)[0];
+    const pe       = safe(stats.forwardPE?.raw) || safe(price.regularMarketPrice?.raw / (stats.trailingEps?.raw || 1));
+
+    // EPS surprise: compare trailing EPS to forward estimates if available
+    const trailingEPS = safe(stats.trailingEps?.raw);
+    const forwardEPS  = safe(stats.forwardEps?.raw);
+    const epsSurprise = (trailingEPS && forwardEPS && forwardEPS !== 0)
+      ? calcGrowth(trailingEPS, forwardEPS) : null;
+
     const legends = [
-
       // 1. O'NEIL — CAN SLIM
       {
-        name: "O'Neil",
-        framework: "CAN SLIM",
-        delay: 0,
+        name: "O'Neil", framework: "CAN SLIM", delay: 0,
         criteria: [
-          {
-            label: 'Quarterly EPS growth ≥20% YoY',
-            pass: epsGrowthQ !== null ? epsGrowthQ >= 0.20 : null,
-            value: epsGrowthQ !== null ? (epsGrowthQ*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: 'EPS acceleration (recent > prior)',
-            pass: epsAccel,
-            value: epsAccel === null ? '—' : epsAccel ? 'Accelerating' : 'Decelerating'
-          },
-          {
-            label: 'Annual EPS growth ≥25% YoY',
-            pass: epsGrowthA !== null ? epsGrowthA >= 0.25 : null,
-            value: epsGrowthA !== null ? (epsGrowthA*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: 'Price within 25% of 52W high',
-            pass: pos52W !== null ? pos52W >= 0.75 : null,
-            value: pos52W !== null ? (pos52W*100).toFixed(0)+'% of range' : '—'
-          },
-          {
-            label: 'Institutional sponsorship present',
-            pass: hasInst,
-            value: hasInst ? 'Likely (mktCap >$2B)' : 'Unlikely (small cap)'
-          },
-          {
-            label: 'Revenue growth ≥20% YoY (quarterly)',
-            pass: revGrowthQ !== null ? revGrowthQ >= 0.20 : null,
-            value: revGrowthQ !== null ? (revGrowthQ*100).toFixed(1)+'%' : '—'
-          }
+          { label: 'Quarterly EPS growth ≥20% YoY',      pass: epsGrowthQ!==null ? epsGrowthQ>=0.20 : null,   value: epsGrowthQ!==null ? (epsGrowthQ*100).toFixed(1)+'%' : '—' },
+          { label: 'EPS acceleration (recent > prior)',   pass: epsAccel,                                       value: epsAccel===null ? '—' : epsAccel ? 'Yes' : 'No' },
+          { label: 'Annual EPS growth ≥25%',              pass: epsGrowthA!==null ? epsGrowthA>=0.25 : null,   value: epsGrowthA!==null ? (epsGrowthA*100).toFixed(1)+'%' : '—' },
+          { label: 'Price within 25% of 52W high',       pass: pos52W!==null ? pos52W>=0.75 : null,            value: pos52W!==null ? (pos52W*100).toFixed(0)+'% of range' : '—' },
+          { label: 'Institutional sponsorship present',  pass: instProxy,                                      value: instProxy ? 'Likely (cap >$2B)' : 'Unlikely (small cap)' },
+          { label: 'Revenue growth ≥20% YoY (quarterly)',pass: revGrowthQ!==null ? revGrowthQ>=0.20 : null,   value: revGrowthQ!==null ? (revGrowthQ*100).toFixed(1)+'%' : '—' }
         ]
       },
-
       // 2. MINERVINI — SEPA
       {
-        name: 'Minervini',
-        framework: 'SEPA',
-        delay: 1,
+        name: 'Minervini', framework: 'SEPA', delay: 1,
         criteria: [
-          {
-            label: 'Price above 150 & 200-day MA',
-            pass: maTrend ? (maTrend.above150 && maTrend.above200) : null,
-            value: maTrend ? (maTrend.above150 && maTrend.above200 ? 'Yes' : 'No') : '—'
-          },
-          {
-            label: '150 MA above 200 MA',
-            pass: maTrend ? maTrend.ma150aboveMa200 : null,
-            value: maTrend ? (maTrend.ma150aboveMa200 ? 'Yes' : 'No') : '—'
-          },
-          {
-            label: '200 MA trending up (vs 30d ago)',
-            pass: maTrend ? maTrend.ma200trending : null,
-            value: maTrend ? (maTrend.ma200trending ? 'Trending up' : 'Flat/down') : '—'
-          },
-          {
-            label: '52W low at least 30% below current',
-            pass: aboveLow !== null ? aboveLow >= 0.30 : null,
-            value: aboveLow !== null ? (aboveLow*100).toFixed(0)+'% above low' : '—'
-          },
-          {
-            label: 'EPS acceleration (recent > prior)',
-            pass: epsAccel,
-            value: epsAccel === null ? '—' : epsAccel ? 'Yes' : 'No'
-          },
-          {
-            label: 'Price above 50-day MA',
-            pass: maTrend ? maTrend.above50 : null,
-            value: maTrend ? (maTrend.above50 ? 'Yes' : 'No') : '—'
-          }
+          { label: 'Price above 150 & 200-day MA',       pass: maTrend ? (maTrend.above150 && maTrend.above200) : null, value: maTrend ? (maTrend.above150 && maTrend.above200 ? 'Yes' : 'No') : '—' },
+          { label: '150 MA above 200 MA',                pass: maTrend ? maTrend.ma150aboveMa200 : null,                value: maTrend ? (maTrend.ma150aboveMa200 ? 'Yes' : 'No') : '—' },
+          { label: '200 MA trending up (vs 30d ago)',    pass: maTrend ? maTrend.ma200trending : null,                  value: maTrend ? (maTrend.ma200trending ? 'Trending up' : 'Flat/down') : '—' },
+          { label: '52W low ≥30% below current price',  pass: aboveLow!==null ? aboveLow>=0.30 : null,                 value: aboveLow!==null ? (aboveLow*100).toFixed(0)+'% above low' : '—' },
+          { label: 'EPS acceleration present',           pass: epsAccel,                                                value: epsAccel===null ? '—' : epsAccel ? 'Yes' : 'No' },
+          { label: 'Price above 50-day MA',              pass: maTrend ? maTrend.above50 : null,                       value: maTrend ? (maTrend.above50 ? 'Yes' : 'No') : '—' }
         ]
       },
-
       // 3. LYNCH — GARP
       {
-        name: 'Lynch',
-        framework: 'GARP',
-        delay: 2,
+        name: 'Lynch', framework: 'GARP', delay: 2,
         criteria: [
-          {
-            label: 'PEG ratio below 1.0',
-            pass: peg !== null ? peg < 1.0 && peg > 0 : null,
-            value: peg !== null ? peg.toFixed(2) : '—'
-          },
-          {
-            label: 'Quarterly revenue growth ≥15%',
-            pass: revGrowthQ !== null ? revGrowthQ >= 0.15 : null,
-            value: revGrowthQ !== null ? (revGrowthQ*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: 'Debt/Equity manageable (<1.0)',
-            pass: null,
-            value: 'N/A — paid tier'
-          },
-          {
-            label: 'Positive EPS (profitable)',
-            pass: incomeArr.length > 0 ? (safe(incomeArr[0].eps, 0) > 0) : null,
-            value: incomeArr.length > 0 ? '$' + dp(safe(incomeArr[0].eps)) : '—'
-          },
-          {
-            label: 'EPS growth ≥15% annually',
-            pass: epsGrowthA !== null ? epsGrowthA >= 0.15 : null,
-            value: epsGrowthA !== null ? (epsGrowthA*100).toFixed(1)+'%' : '—'
-          }
+          { label: 'PEG ratio below 1.0',                pass: peg!==null ? (peg<1.0 && peg>0) : null,        value: peg!==null ? dp(peg) : '—' },
+          { label: 'Quarterly revenue growth ≥15%',      pass: revGrowthQ!==null ? revGrowthQ>=0.15 : null,   value: revGrowthQ!==null ? (revGrowthQ*100).toFixed(1)+'%' : '—' },
+          { label: 'Debt/Equity manageable (<1.0)',       pass: debtEq!==null ? debtEq<100 : null,             value: debtEq!==null ? (debtEq/100).toFixed(2) : '—' },
+          { label: 'Positive EPS (profitable)',           pass: currEPS!==null ? currEPS>0 : null,             value: currEPS!==null ? '$'+dp(currEPS) : '—' },
+          { label: 'Annual EPS growth ≥15%',             pass: epsGrowthA!==null ? epsGrowthA>=0.15 : null,   value: epsGrowthA!==null ? (epsGrowthA*100).toFixed(1)+'%' : '—' }
         ]
       },
-
       // 4. LIVERMORE — Leader Filter
       {
-        name: 'Livermore',
-        framework: 'Leader Filter',
-        delay: 3,
+        name: 'Livermore', framework: 'Leader Filter', delay: 3,
         criteria: [
-          {
-            label: 'Price within 15% of 52W high',
-            pass: pos52W !== null ? pos52W >= 0.85 : null,
-            value: pos52W !== null ? (pos52W*100).toFixed(0)+'% of range' : '—'
-          },
-          {
-            label: '6-month relative strength positive',
-            pass: rs6M !== null ? rs6M > 0 : null,
-            value: rs6M !== null ? (rs6M*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: 'Volume trend expanding (10d vs 30d)',
-            pass: volumeTrend !== null ? volumeTrend >= 1.0 : null,
-            value: volumeTrend !== null ? volumeTrend.toFixed(2)+'x' : '—'
-          },
-          {
-            label: 'Price above 50-day MA',
-            pass: maTrend ? maTrend.above50 : null,
-            value: maTrend ? (maTrend.above50 ? 'Above' : 'Below') : '—'
-          },
-          {
-            label: 'Positive quarterly EPS growth',
-            pass: epsGrowthQ !== null ? epsGrowthQ > 0 : null,
-            value: epsGrowthQ !== null ? (epsGrowthQ*100).toFixed(1)+'%' : '—'
-          }
+          { label: 'Price within 15% of 52W high',       pass: pos52W!==null ? pos52W>=0.85 : null,           value: pos52W!==null ? (pos52W*100).toFixed(0)+'% of range' : '—' },
+          { label: '6-month relative strength positive', pass: rs6M!==null ? rs6M>0 : null,                   value: rs6M!==null ? (rs6M*100).toFixed(1)+'%' : '—' },
+          { label: 'Volume expanding (10d vs 30d avg)',  pass: volumeTrend!==null ? volumeTrend>=1.0 : null,  value: volumeTrend!==null ? volumeTrend.toFixed(2)+'x' : '—' },
+          { label: 'Price above 50-day MA',              pass: maTrend ? maTrend.above50 : null,              value: maTrend ? (maTrend.above50 ? 'Above' : 'Below') : '—' },
+          { label: 'Positive quarterly EPS growth',      pass: epsGrowthQ!==null ? epsGrowthQ>0 : null,       value: epsGrowthQ!==null ? (epsGrowthQ*100).toFixed(1)+'%' : '—' }
         ]
       },
-
-      // 5. BONDE — PEAD / Episodic Pivot
+      // 5. BONDE — PEAD
       {
-        name: 'Bonde',
-        framework: 'PEAD · Episodic Pivot',
-        delay: 4,
+        name: 'Bonde', framework: 'PEAD · Episodic Pivot', delay: 4,
         criteria: [
-          {
-            label: 'Strong EPS surprise (beat ≥5%)',
-            pass: null,
-            value: 'N/A — paid tier'
-          },
-          {
-            label: 'Analyst estimates revised upward',
-            pass: estRevision !== null ? estRevision > 0 : null,
-            value: estRevision !== null ? (estRevision*100).toFixed(1)+'% revision' : '—'
-          },
-          {
-            label: 'EPS acceleration present',
-            pass: epsAccel,
-            value: epsAccel === null ? '—' : epsAccel ? 'Yes' : 'No'
-          },
-          {
-            label: 'Price within 20% of 52W high',
-            pass: pos52W !== null ? pos52W >= 0.80 : null,
-            value: pos52W !== null ? (pos52W*100).toFixed(0)+'% of range' : '—'
-          },
-          {
-            label: 'Revenue growth ≥20% YoY',
-            pass: revGrowthQ !== null ? revGrowthQ >= 0.20 : null,
-            value: revGrowthQ !== null ? (revGrowthQ*100).toFixed(1)+'%' : '—'
-          }
+          { label: 'EPS beat vs forward estimate',       pass: epsSurprise!==null ? epsSurprise>0.05 : null,  value: epsSurprise!==null ? (epsSurprise*100).toFixed(1)+'%' : '—' },
+          { label: 'EPS acceleration present',           pass: epsAccel,                                      value: epsAccel===null ? '—' : epsAccel ? 'Yes' : 'No' },
+          { label: 'Price within 20% of 52W high',      pass: pos52W!==null ? pos52W>=0.80 : null,           value: pos52W!==null ? (pos52W*100).toFixed(0)+'% of range' : '—' },
+          { label: 'Revenue growth ≥20% YoY',           pass: revGrowthQ!==null ? revGrowthQ>=0.20 : null,   value: revGrowthQ!==null ? (revGrowthQ*100).toFixed(1)+'%' : '—' },
+          { label: 'Annual EPS growth ≥20%',            pass: epsGrowthA!==null ? epsGrowthA>=0.20 : null,   value: epsGrowthA!==null ? (epsGrowthA*100).toFixed(1)+'%' : '—' }
         ]
       },
-
       // 6. ZANGER — Volume Breakout
       {
-        name: 'Zanger',
-        framework: 'Volume Breakout',
-        delay: 5,
+        name: 'Zanger', framework: 'Volume Breakout', delay: 5,
         criteria: [
-          {
-            label: 'Price above all major MAs (50/150/200)',
-            pass: maTrend ? (maTrend.above50 && maTrend.above150 && maTrend.above200) : null,
-            value: maTrend ? (maTrend.above50 && maTrend.above150 && maTrend.above200 ? 'Yes' : 'No') : '—'
-          },
-          {
-            label: 'Volume expanding vs 30d average',
-            pass: volumeTrend !== null ? volumeTrend >= 1.1 : null,
-            value: volumeTrend !== null ? volumeTrend.toFixed(2)+'x avg' : '—'
-          },
-          {
-            label: '3-month relative strength ≥10%',
-            pass: rs3M !== null ? rs3M >= 0.10 : null,
-            value: rs3M !== null ? (rs3M*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: 'Near 52-week high (≥80% of range)',
-            pass: pos52W !== null ? pos52W >= 0.80 : null,
-            value: pos52W !== null ? (pos52W*100).toFixed(0)+'% of range' : '—'
-          },
-          {
-            label: 'Strong quarterly EPS growth ≥20%',
-            pass: epsGrowthQ !== null ? epsGrowthQ >= 0.20 : null,
-            value: epsGrowthQ !== null ? (epsGrowthQ*100).toFixed(1)+'%' : '—'
-          }
+          { label: 'Price above all major MAs (50/150/200)', pass: maTrend ? (maTrend.above50&&maTrend.above150&&maTrend.above200) : null, value: maTrend ? (maTrend.above50&&maTrend.above150&&maTrend.above200 ? 'Yes' : 'No') : '—' },
+          { label: 'Volume expanding vs 30d average',    pass: volumeTrend!==null ? volumeTrend>=1.1 : null,  value: volumeTrend!==null ? volumeTrend.toFixed(2)+'x avg' : '—' },
+          { label: '3-month relative strength ≥10%',     pass: rs3M!==null ? rs3M>=0.10 : null,              value: rs3M!==null ? (rs3M*100).toFixed(1)+'%' : '—' },
+          { label: 'Near 52W high (≥80% of range)',      pass: pos52W!==null ? pos52W>=0.80 : null,          value: pos52W!==null ? (pos52W*100).toFixed(0)+'% of range' : '—' },
+          { label: 'Strong quarterly EPS growth ≥20%',  pass: epsGrowthQ!==null ? epsGrowthQ>=0.20 : null,  value: epsGrowthQ!==null ? (epsGrowthQ*100).toFixed(1)+'%' : '—' }
         ]
       },
-
       // 7. WILLIAMS — Relative Strength
       {
-        name: 'Williams',
-        framework: 'Relative Strength',
-        delay: 6,
+        name: 'Williams', framework: 'Relative Strength', delay: 6,
         criteria: [
-          {
-            label: '3-month RS strong (≥15%)',
-            pass: rs3M !== null ? rs3M >= 0.15 : null,
-            value: rs3M !== null ? (rs3M*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: '6-month RS positive',
-            pass: rs6M !== null ? rs6M > 0.10 : null,
-            value: rs6M !== null ? (rs6M*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: 'Price above 50-day MA',
-            pass: maTrend ? maTrend.above50 : null,
-            value: maTrend ? (maTrend.above50 ? 'Yes' : 'No') : '—'
-          },
-          {
-            label: 'Near 52W high (≥75% of range)',
-            pass: pos52W !== null ? pos52W >= 0.75 : null,
-            value: pos52W !== null ? (pos52W*100).toFixed(0)+'% of range' : '—'
-          },
-          {
-            label: 'Positive EPS growth quarterly',
-            pass: epsGrowthQ !== null ? epsGrowthQ >= 0.10 : null,
-            value: epsGrowthQ !== null ? (epsGrowthQ*100).toFixed(1)+'%' : '—'
-          }
+          { label: '3-month RS strong (≥15%)',           pass: rs3M!==null ? rs3M>=0.15 : null,              value: rs3M!==null ? (rs3M*100).toFixed(1)+'%' : '—' },
+          { label: '6-month RS positive (≥10%)',         pass: rs6M!==null ? rs6M>=0.10 : null,              value: rs6M!==null ? (rs6M*100).toFixed(1)+'%' : '—' },
+          { label: 'Price above 50-day MA',              pass: maTrend ? maTrend.above50 : null,             value: maTrend ? (maTrend.above50 ? 'Yes' : 'No') : '—' },
+          { label: 'Near 52W high (≥75% of range)',      pass: pos52W!==null ? pos52W>=0.75 : null,          value: pos52W!==null ? (pos52W*100).toFixed(0)+'% of range' : '—' },
+          { label: 'Positive EPS growth quarterly',      pass: epsGrowthQ!==null ? epsGrowthQ>=0.10 : null,  value: epsGrowthQ!==null ? (epsGrowthQ*100).toFixed(1)+'%' : '—' }
         ]
       },
-
       // 8. DRUCKENMILLER — Macro + Earnings
       {
-        name: 'Druckenmiller',
-        framework: 'Macro · Earnings',
-        delay: 7,
+        name: 'Druckenmiller', framework: 'Macro · Earnings', delay: 7,
         criteria: [
-          {
-            label: 'Analyst estimates revised upward',
-            pass: estRevision !== null ? estRevision > 0 : null,
-            value: estRevision !== null ? (estRevision*100).toFixed(1)+'% revision' : '—'
-          },
-          {
-            label: 'Institutional accumulation (holders present)',
-            pass: hasInst,
-            value: hasInst ? 'Likely (mktCap >$2B)' : 'Unlikely (small cap)'
-          },
-          {
-            label: '6-month price momentum positive',
-            pass: rs6M !== null ? rs6M > 0 : null,
-            value: rs6M !== null ? (rs6M*100).toFixed(1)+'%' : '—'
-          },
-          {
-            label: 'EPS growth acceleration',
-            pass: epsAccel,
-            value: epsAccel === null ? '—' : epsAccel ? 'Accelerating' : 'Decelerating'
-          },
-          {
-            label: 'Not extended — below 20% above 200MA',
-            pass: maTrend ? (maTrend.current < maTrend.ma200 * 1.20) : null,
-            value: maTrend ? ((maTrend.current / maTrend.ma200 - 1)*100).toFixed(1)+'% above 200MA' : '—'
-          },
-          {
-            label: 'Sector macro tailwind (AI assessed)',
-            pass: null, // handled by Claude
-            value: 'See AI assessment'
-          }
+          { label: 'Institutional presence (cap >$2B)',  pass: instProxy,                                     value: instProxy ? 'Yes' : 'No' },
+          { label: '6-month price momentum positive',    pass: rs6M!==null ? rs6M>0 : null,                  value: rs6M!==null ? (rs6M*100).toFixed(1)+'%' : '—' },
+          { label: 'EPS growth accelerating',            pass: epsAccel,                                      value: epsAccel===null ? '—' : epsAccel ? 'Accelerating' : 'Decelerating' },
+          { label: 'Not extended (≤20% above 200MA)',   pass: maTrend ? (maTrend.current < maTrend.ma200*1.20) : null, value: maTrend ? ((maTrend.current/maTrend.ma200-1)*100).toFixed(1)+'% above 200MA' : '—' },
+          { label: 'Revenue growth ≥15% YoY',           pass: revGrowthQ!==null ? revGrowthQ>=0.15 : null,  value: revGrowthQ!==null ? (revGrowthQ*100).toFixed(1)+'%' : '—' },
+          { label: 'Sector macro tailwind (AI assessed)',pass: null, value: 'See AI assessment' }
         ]
       }
     ];
 
-    // Calculate scores
     const scores = legends.map(l => {
-      const criteria = l.criteria.filter(c => c.pass !== null);
-      const passed = criteria.filter(c => c.pass === true).length;
-      const total = criteria.length;
-      const score = total > 0 ? passed / total : 0;
-      const verdict = score >= 0.67 ? 'approved' : score >= 0.40 ? 'neutral' : 'rejected';
-      return { ...l, passed, total, score, verdict };
+      const scoreable = l.criteria.filter(c => c.pass !== null);
+      const passed = scoreable.filter(c => c.pass === true).length;
+      const total  = scoreable.length;
+      const ratio  = total > 0 ? passed/total : 0;
+      const verdict = ratio >= 0.67 ? 'approved' : ratio >= 0.40 ? 'neutral' : 'rejected';
+      return { ...l, passed, total, verdict };
     });
 
-    // Render
     const grid = document.getElementById('legendsGrid');
-    grid.innerHTML = scores.map((l, idx) => {
-      const verdictLabel = l.verdict === 'approved' ? '▲ Approves' : l.verdict === 'neutral' ? '◆ Neutral' : '▼ Rejects';
-      const verdictClass = 'verdict-' + (l.verdict === 'approved' ? 'approve' : l.verdict);
-      const badgeClass = l.verdict;
-      const delay = (l.delay * 0.06);
-
+    grid.innerHTML = scores.map(l => {
+      const vLabel = l.verdict==='approved' ? '▲ Approves' : l.verdict==='neutral' ? '◆ Neutral' : '▼ Rejects';
+      const vClass = 'verdict-' + (l.verdict==='approved' ? 'approve' : l.verdict);
       return `
-        <div class="legend-card ${l.verdict}" style="animation-delay:${delay}s">
+        <div class="legend-card ${l.verdict}" style="animation-delay:${l.delay*0.06}s">
           <div class="legend-header">
             <div>
               <div class="legend-name">${l.name}</div>
               <div class="legend-framework">${l.framework}</div>
             </div>
-            <span class="legend-score-badge ${badgeClass}">${l.passed}/${l.total}</span>
+            <span class="legend-score-badge ${l.verdict}">${l.passed}/${l.total}</span>
           </div>
           <ul class="legend-criteria">
             ${l.criteria.map(c => {
-              const iconClass = c.pass === null ? 'pending' : c.pass ? 'pass' : 'fail';
-              const icon = c.pass === null ? '·' : c.pass ? '✓' : '✗';
-              const valClass = c.pass === null ? '' : c.pass ? 'pass-val' : 'fail-val';
+              const ic = c.pass===null?'pending':c.pass?'pass':'fail';
+              const icon = c.pass===null?'·':c.pass?'✓':'✗';
+              const vc = c.pass===null?'':(c.pass?'pass-val':'fail-val');
               return `<li class="criterion">
-                <span class="criterion-icon ${iconClass}">${icon}</span>
+                <span class="criterion-icon ${ic}">${icon}</span>
                 <span class="criterion-text">${c.label}</span>
-                <span class="criterion-value ${valClass}">${c.value}</span>
+                <span class="criterion-value ${vc}">${c.value}</span>
               </li>`;
             }).join('')}
           </ul>
-          <div class="legend-verdict ${verdictClass}">${verdictLabel}</div>
+          <div class="legend-verdict ${vClass}">${vLabel}</div>
         </div>`;
     }).join('');
 
@@ -1697,20 +1471,21 @@
 
   // ── CONSENSUS ─────────────────────────────────────────────────────────
   async function renderConsensus(d, scores) {
-    const approved = scores.filter(s => s.verdict === 'approved').length;
-    const neutral = scores.filter(s => s.verdict === 'neutral').length;
-    const rejected = scores.filter(s => s.verdict === 'rejected').length;
-    const total = scores.length;
+    const approved = scores.filter(s => s.verdict==='approved').length;
+    const neutral  = scores.filter(s => s.verdict==='neutral').length;
+    const rejected = scores.filter(s => s.verdict==='rejected').length;
+    const total    = scores.length;
 
-    const cls = approved >= 6 ? 'strong' : approved >= 4 ? 'moderate' : 'weak';
-    const label = approved >= 6 ? 'Strong Buy Candidate' : approved >= 4 ? 'Watch & Investigate' : 'Does Not Qualify';
-    const gaugePct = (approved / total * 100).toFixed(0);
+    const cls   = approved>=6 ? 'strong' : approved>=4 ? 'moderate' : 'weak';
+    const label = approved>=6 ? 'Strong Buy Candidate' : approved>=4 ? 'Watch & Investigate' : 'Does Not Qualify';
+    const gaugePct = (approved/total*100).toFixed(0);
+    const btnClass = approved>=6 ? 'watchlist' : approved>=4 ? 'monitor' : 'pass-btn';
+    const btnText  = approved>=6 ? '+ Add to Watchlist' : approved>=4 ? 'Monitor — Needs More Work' : 'Pass — Does Not Qualify';
+    const name     = d.result.price?.longName || d.result.price?.shortName || d.ticker;
+    const price    = safe(d.result.price?.regularMarketPrice?.raw, 0);
+    const btnAction = approved>=6 ? `addToWatchlist('${d.ticker}','${name.replace(/'/g,"\'")}',${approved},'${dp(price)}')` : '';
 
-    const btnClass = approved >= 6 ? 'watchlist' : approved >= 4 ? 'monitor' : 'pass-btn';
-    const btnText = approved >= 6 ? '+ Add to Watchlist' : approved >= 4 ? 'Monitor — Needs More Work' : 'Pass — Does Not Qualify';
-    const btnAction = approved >= 6 ? `addToWatchlist('${d.ticker}','${d.profile.companyName.replace(/'/g,"\\'")}',${approved},'${d.quote.price.toFixed(2)}')` : '';
-
-    let html = `
+    document.getElementById('consensusSection').innerHTML = `
       <div class="consensus-grid">
         <div class="consensus-score-display">
           <div class="consensus-number ${cls}">${approved}</div>
@@ -1731,20 +1506,11 @@
             </div>
           </div>
           <div class="consensus-breakdown">
-            <div class="breakdown-cell">
-              <div class="breakdown-num approve">${approved}</div>
-              <div class="breakdown-lbl">Approve</div>
-            </div>
-            <div class="breakdown-cell">
-              <div class="breakdown-num neutral">${neutral}</div>
-              <div class="breakdown-lbl">Neutral</div>
-            </div>
-            <div class="breakdown-cell">
-              <div class="breakdown-num reject">${rejected}</div>
-              <div class="breakdown-lbl">Reject</div>
-            </div>
+            <div class="breakdown-cell"><div class="breakdown-num approve">${approved}</div><div class="breakdown-lbl">Approve</div></div>
+            <div class="breakdown-cell"><div class="breakdown-num neutral">${neutral}</div><div class="breakdown-lbl">Neutral</div></div>
+            <div class="breakdown-cell"><div class="breakdown-num reject">${rejected}</div><div class="breakdown-lbl">Reject</div></div>
           </div>
-          <div class="ai-summary-box" id="aiSummaryBox">
+          <div class="ai-summary-box">
             <div class="ai-summary-label">⬡ Claude AI Assessment</div>
             <div class="ai-summary-text" id="aiSummaryText">Generating fundamental assessment...</div>
           </div>
@@ -1752,49 +1518,47 @@
       </div>
       <button class="final-verdict ${btnClass}" onclick="${btnAction}">${btnText}</button>`;
 
-    document.getElementById('consensusSection').innerHTML = html;
-
-    // Animate gauge
     setTimeout(() => {
-      document.getElementById('gaugeFill').style.width = gaugePct + '%';
+      const gf = document.getElementById('gaugeFill');
+      if (gf) gf.style.width = gaugePct + '%';
     }, 100);
 
-    // Claude AI summary
     await generateAISummary(d, scores, approved, label);
   }
 
   // ── CLAUDE AI SUMMARY ─────────────────────────────────────────────────
   async function generateAISummary(d, scores, approvedCount, label) {
     const key = getClaudeKey();
-    if (!key) {
-      document.getElementById('aiSummaryText').textContent = 'No API key provided — add your Anthropic key to enable AI summaries.';
-      return;
-    }
+    if (!key) { document.getElementById('aiSummaryText').textContent = 'No API key — add your Anthropic key when prompted.'; return; }
 
-    const { ticker, profile, quote, incomeArr, incomeAnnualArr, pegApprox } = d;
-    const epsGrowthQ = calcEpsGrowthQoQ(incomeArr);
-    const epsGrowthA = calcAnnualEpsGrowth(incomeAnnualArr);
-    const revGrowth = calcRevenueGrowthQoQ(incomeArr);
-    const peg = pegApprox;
+    const { ticker, result } = d;
+    const price    = result.price || {};
+    const stats    = result.defaultKeyStatistics || {};
+    const profile  = result.summaryProfile || {};
+    const epsGrowthQ = calcEpsGrowthQoQ(result);
+    const epsGrowthA = calcAnnualEpsGrowth(result);
+    const revGrowth  = calcRevenueGrowthQoQ(result);
+    const peg        = safe(stats.pegRatio?.raw);
+    const approvedNames = scores.filter(s=>s.verdict==='approved').map(s=>s.name);
+    const rejectedNames = scores.filter(s=>s.verdict==='rejected').map(s=>s.name);
+    const mktCapB = (safe(price.marketCap?.raw,0)/1e9).toFixed(1);
 
-    const approvedLegends = scores.filter(s => s.verdict === 'approved').map(s => s.name);
-    const rejectedLegends = scores.filter(s => s.verdict === 'rejected').map(s => s.name);
+    const prompt = `You are a senior equity analyst. Analyze ${ticker} (${price.longName||ticker}) for a professional swing trader.
 
-    const prompt = `You are a senior equity analyst. Analyze ${ticker} (${profile.companyName}) based on these fundamental data points:
-- Sector: ${profile.sector}, Industry: ${profile.industry}
-- Price: $${quote.price?.toFixed(2)}, Market Cap: $${(profile.mktCap/1e9)?.toFixed(1)}B
-- Quarterly EPS growth YoY: ${epsGrowthQ !== null ? (epsGrowthQ*100).toFixed(1)+'%' : 'N/A'}
-- Annual EPS growth: ${epsGrowthA !== null ? (epsGrowthA*100).toFixed(1)+'%' : 'N/A'}
-- Revenue growth quarterly YoY: ${revGrowth !== null ? (revGrowth*100).toFixed(1)+'%' : 'N/A'}
-- PEG ratio: ${peg !== null ? peg.toFixed(2) : 'N/A'}
-- Trading legends approving (${approvedCount}/8): ${approvedLegends.join(', ') || 'none'}
-- Legends rejecting: ${rejectedLegends.join(', ') || 'none'}
-- Druckenmiller macro question: Does ${profile.sector} sector have a current macro tailwind? Answer in one sentence.
+Key data:
+- Sector: ${profile.sector||'N/A'}, Industry: ${profile.industry||'N/A'}
+- Price: $${safe(price.regularMarketPrice?.raw,0).toFixed(2)}, Market Cap: $${mktCapB}B
+- Quarterly EPS growth YoY: ${epsGrowthQ!==null?(epsGrowthQ*100).toFixed(1)+'%':'N/A'}
+- Annual EPS growth: ${epsGrowthA!==null?(epsGrowthA*100).toFixed(1)+'%':'N/A'}
+- Revenue growth quarterly YoY: ${revGrowth!==null?(revGrowth*100).toFixed(1)+'%':'N/A'}
+- PEG ratio: ${peg!==null?peg.toFixed(2):'N/A'}
+- Legends approving (${approvedCount}/8): ${approvedNames.join(', ')||'none'}
+- Legends rejecting: ${rejectedNames.join(', ')||'none'}
 
-Write a 2-3 sentence professional fundamental summary for a swing trader. Be direct, honest, and flag any major concerns. End with the macro tailwind verdict for this sector.`;
+Write exactly 3 sentences: (1) core fundamental thesis, (2) biggest risk or weakness, (3) one-sentence macro tailwind verdict for the ${profile.sector||'N/A'} sector right now. Be direct, professional, no fluff.`;
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1804,26 +1568,23 @@ Write a 2-3 sentence professional fundamental summary for a swing trader. Be dir
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 200,
+          max_tokens: 220,
           messages: [{ role: 'user', content: prompt }]
         })
       });
-
-      const data = await response.json();
-      const text = data.content?.[0]?.text || 'Assessment unavailable.';
-      document.getElementById('aiSummaryText').textContent = text;
+      const data = await res.json();
+      document.getElementById('aiSummaryText').textContent = data.content?.[0]?.text || 'Assessment unavailable.';
     } catch(e) {
-      document.getElementById('aiSummaryText').textContent = 'AI assessment failed. Check your API key in localStorage (key: omc_claude_key).';
+      document.getElementById('aiSummaryText').textContent = 'AI assessment failed — check your API key.';
     }
   }
 
-  // ── CHART UPLOAD & ANALYSIS ───────────────────────────────────────────
+  // ── CHART UPLOAD ──────────────────────────────────────────────────────
   let chartImageBase64 = null;
 
   function handleChartUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (e) => {
       chartImageBase64 = e.target.result.split(',')[1];
@@ -1834,50 +1595,32 @@ Write a 2-3 sentence professional fundamental summary for a swing trader. Be dir
     reader.readAsDataURL(file);
   }
 
-  // Drag and drop
   const uploadZone = document.getElementById('uploadZone');
   uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
   uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
   uploadZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadZone.classList.remove('dragover');
+    e.preventDefault(); uploadZone.classList.remove('dragover');
     const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const input = document.getElementById('chartUpload');
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-      handleChartUpload({ target: { files: [file] } });
-    }
+    if (file && file.type.startsWith('image/')) handleChartUpload({ target: { files: [file] } });
   });
 
   async function analyzeChart() {
     if (!chartImageBase64) return;
-    if (!currentData.ticker) {
-      alert('Run a stock analysis first before analyzing the chart.');
-      return;
-    }
-
+    if (!currentData.ticker) { alert('Run a stock analysis first.'); return; }
     const btn = document.getElementById('analyzeChartBtn');
-    btn.textContent = 'Analyzing chart...';
+    btn.textContent = 'Analyzing...';
     btn.disabled = true;
-
     const key = getClaudeKey();
-    if (!key) {
-      btn.textContent = 'Analyze Entry Points for All Legends';
-      btn.disabled = false;
-      return;
-    }
+    if (!key) { btn.textContent = 'Analyze Entry Points for All Legends'; btn.disabled = false; return; }
 
-    const { ticker, profile } = currentData;
+    const { ticker, result } = currentData;
+    const name = result?.price?.longName || ticker;
 
-    const prompt = `You are analyzing a TradingView chart of ${ticker} (${profile.companyName}).
+    const prompt = `You are analyzing a TradingView price chart of ${ticker} (${name}).
 
-Based purely on what you can observe in this chart, describe the specific entry approach each of these 6 trading legends would take — what price structure or condition triggers their entry, where they would place their stop, and their initial target logic.
+Based only on what you observe in this chart, describe the specific entry approach each of these 6 legends would take — what condition triggers entry, where they place the stop, and initial target logic.
 
-Be specific to what you see in the chart. If the chart shows a base, consolidation, trend, breakout setup, or any recognizable pattern, reference it directly.
-
-Format your response as exactly 6 sections, each starting with the legend name in ALL CAPS followed by a colon:
+Format as exactly 6 sections starting with the name in ALL CAPS followed by a colon:
 
 LIVERMORE:
 O'NEIL:
@@ -1886,10 +1629,10 @@ ZANGER:
 WILLIAMS:
 DRUCKENMILLER:
 
-Keep each entry analysis to 2-3 sentences. Be direct and technical. Reference specific chart features you observe.`;
+2-3 sentences each. Be specific to what you see. Reference chart features directly.`;
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1909,31 +1652,26 @@ Keep each entry analysis to 2-3 sentences. Be direct and technical. Reference sp
           }]
         })
       });
-
-      const data = await response.json();
+      const data = await res.json();
       const text = data.content?.[0]?.text || '';
 
-      // Parse sections
-      const legendNames = ['LIVERMORE', "O'NEIL", 'MINERVINI', 'ZANGER', 'WILLIAMS', 'DRUCKENMILLER'];
-      const colors = ['#c9a84c', '#c9a84c', '#c9a84c', '#c9a84c', '#c9a84c', '#c9a84c'];
-
-      let resultHTML = '';
+      const legendNames = ['LIVERMORE',"O'NEIL",'MINERVINI','ZANGER','WILLIAMS','DRUCKENMILLER'];
+      let html = '';
       legendNames.forEach((name, i) => {
-        const regex = new RegExp(name + ':\\s*([\\s\\S]*?)(?=' + legendNames.slice(i+1).join(':|') + (i < legendNames.length-1 ? ':' : '$') + ')', 'i');
-        const match = text.match(regex);
-        const content = match ? match[1].trim() : 'Analysis not available for this section.';
-        resultHTML += `
-          <div class="entry-legend-card" style="animation-delay:${i*0.08}s">
-            <div class="entry-legend-name">${name}</div>
-            <div class="entry-legend-text">${content}</div>
-          </div>`;
+        const next = legendNames.slice(i+1).map(n => n.replace(/'/g,"\\'")+':').join('|');
+        const re = new RegExp(name.replace(/'/g,"'") + ':\s*([\s\S]*?)(?:' + (next||'$') + ')', 'i');
+        const match = text.match(re);
+        const content = match ? match[1].trim() : 'Analysis not available.';
+        html += `<div class="entry-legend-card" style="animation-delay:${i*0.08}s">
+          <div class="entry-legend-name">${name}</div>
+          <div class="entry-legend-text">${content}</div>
+        </div>`;
       });
 
-      document.getElementById('chartAnalysisResult').innerHTML = resultHTML;
+      document.getElementById('chartAnalysisResult').innerHTML = html;
       document.getElementById('chartAnalysisResult').classList.add('active');
-
     } catch(e) {
-      document.getElementById('chartAnalysisResult').innerHTML = '<div class="error-bar active">Chart analysis failed: ' + e.message + '</div>';
+      document.getElementById('chartAnalysisResult').innerHTML = `<div class="error-bar active">Chart analysis failed: ${e.message}</div>`;
       document.getElementById('chartAnalysisResult').classList.add('active');
     }
 
@@ -1941,10 +1679,8 @@ Keep each entry analysis to 2-3 sentences. Be direct and technical. Reference sp
     btn.disabled = false;
   }
 
-  // ── KEYBOARD SHORTCUT ─────────────────────────────────────────────────
-  document.getElementById('tickerInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') runAnalysis();
-  });
+  // ── KEYBOARD ──────────────────────────────────────────────────────────
+  document.getElementById('tickerInput').addEventListener('keydown', e => { if (e.key==='Enter') runAnalysis(); });
 
   // ── INIT ──────────────────────────────────────────────────────────────
   renderWatchlist();
