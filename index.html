@@ -1112,9 +1112,7 @@
   // ── FMP FETCH HELPERS ─────────────────────────────────────────────────
   async function fmp(endpoint) {
     const sep = endpoint.includes('?') ? '&' : '?';
-    const fmpUrl = `https://financialmodelingprep.com/api/${endpoint}${sep}apikey=${FMP_KEY}`;
-    // CORS proxy for local file testing — remove PROXY_BASE for production hosting
-  const url = fmpUrl;
+    const url = `https://financialmodelingprep.com/api/${endpoint}${sep}apikey=${FMP_KEY}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error('FMP error: ' + r.status);
     return r.json();
@@ -1133,27 +1131,19 @@
     showLoading();
 
     try {
-      // Parallel fetch all data needed
+      // Free FMP endpoints only: profile, quote, income-statement, historical prices
       const [
         profileArr,
         quoteArr,
         incomeArr,
         incomeAnnualArr,
-        metricsArr,
-        metricsAnnualArr,
-        priceHistArr,
-        institutionalArr,
-        estimatesArr
+        priceHistArr
       ] = await Promise.all([
         fmp('v3/profile/' + ticker),
         fmp('v3/quote/' + ticker),
         fmp('v3/income-statement/' + ticker + '?period=quarter&limit=8'),
         fmp('v3/income-statement/' + ticker + '?limit=5'),
-        fmp('v3/key-metrics/' + ticker + '?period=quarter&limit=4'),
-        fmp('v3/key-metrics/' + ticker + '?limit=3'),
-        fmp('v3/historical-price-full/' + ticker + '?timeseries=252'),
-        fmp('v3/institutional-holder/' + ticker),
-        fmp('v3/analyst-estimates/' + ticker + '?limit=4')
+        fmp('v3/historical-price-full/' + ticker + '?timeseries=252')
       ]);
 
       if (!profileArr || profileArr.length === 0) throw new Error('Ticker not found: ' + ticker);
@@ -1161,7 +1151,19 @@
       const profile = profileArr[0];
       const quote = quoteArr[0];
 
-      currentData = { ticker, profile, quote, incomeArr, incomeAnnualArr, metricsArr, metricsAnnualArr, priceHistArr, institutionalArr, estimatesArr };
+      // Derive PEG from free data: PE / (annualised EPS growth * 100)
+      const _epsGrowthA = calcAnnualEpsGrowth(incomeAnnualArr);
+      const pegApprox = (quote.pe && _epsGrowthA && _epsGrowthA > 0) ? quote.pe / (_epsGrowthA * 100) : null;
+      // Institutional proxy: market cap > $2B almost always means institutional coverage
+      const instProxy = profile.mktCap > 2e9;
+
+      currentData = {
+        ticker, profile, quote, incomeArr, incomeAnnualArr, priceHistArr,
+        pegApprox, instProxy,
+        metricsArr: [], metricsAnnualArr: [],
+        institutionalArr: instProxy ? [{ proxy: true }] : [],
+        estimatesArr: []
+      };
 
       renderSnapshot(currentData);
       const scores = renderLegends(currentData);
@@ -1327,21 +1329,18 @@
   }
 
   function calcEstimateRevision(estimatesArr) {
-    if (!estimatesArr || estimatesArr.length < 2) return null;
-    const curr = safe(estimatesArr[0].estimatedEpsAvg);
-    const prev = safe(estimatesArr[1].estimatedEpsAvg);
-    return calcGrowth(curr, prev);
+    return null; // requires paid FMP tier
   }
 
   function hasInstitutionalOwnership(institutionalArr) {
-    return institutionalArr && institutionalArr.length > 0;
+    return !!(institutionalArr && institutionalArr.length > 0);
   }
 
   // ── RENDER LEGENDS ────────────────────────────────────────────────────
   function renderLegends(d) {
-    const { ticker, profile, quote, incomeArr, incomeAnnualArr, metricsArr, metricsAnnualArr, priceHistArr, institutionalArr, estimatesArr } = d;
+    const { ticker, profile, quote, incomeArr, incomeAnnualArr, priceHistArr, institutionalArr, estimatesArr, pegApprox, instProxy } = d;
 
-    // Pre-calculate all metrics
+    // Pre-calculate all metrics from free data
     const epsGrowthQ = calcEpsGrowthQoQ(incomeArr);
     const epsAccel = calcEpsAcceleration(incomeArr);
     const epsGrowthA = calcAnnualEpsGrowth(incomeAnnualArr);
@@ -1352,12 +1351,11 @@
     const rs3M = calcRelStrength(priceHistArr, 63);
     const rs6M = calcRelStrength(priceHistArr, 126);
     const volumeTrend = calcVolumeTrend(priceHistArr);
-    const estRevision = calcEstimateRevision(estimatesArr);
-    const hasInst = hasInstitutionalOwnership(institutionalArr);
+    const estRevision = null; // requires paid tier
+    const hasInst = instProxy; // derived from market cap
 
-    const peg = safe(metricsAnnualArr[0]?.priceEarningsToGrowthRatio);
-    const debtEq = safe(metricsAnnualArr[0]?.debtToEquity);
-    const roe = safe(metricsAnnualArr[0]?.roe);
+    const peg = pegApprox; // derived from PE * EPS growth
+    const debtEq = null;   // requires paid tier
     const mktCap = safe(profile.mktCap);
 
     // ── 8 LEGEND DEFINITIONS ──────────────────────────────────────────
@@ -1392,7 +1390,7 @@
           {
             label: 'Institutional sponsorship present',
             pass: hasInst,
-            value: hasInst ? institutionalArr.length + ' holders' : 'Not found'
+            value: hasInst ? 'Likely (mktCap >$2B)' : 'Unlikely (small cap)'
           },
           {
             label: 'Revenue growth ≥20% YoY (quarterly)',
@@ -1459,8 +1457,8 @@
           },
           {
             label: 'Debt/Equity manageable (<1.0)',
-            pass: debtEq !== null ? debtEq < 1.0 : null,
-            value: debtEq !== null ? debtEq.toFixed(2) : '—'
+            pass: null,
+            value: 'N/A — paid tier'
           },
           {
             label: 'Positive EPS (profitable)',
@@ -1517,20 +1515,8 @@
         criteria: [
           {
             label: 'Strong EPS surprise (beat ≥5%)',
-            pass: (() => {
-              if (!estimatesArr || estimatesArr.length === 0) return null;
-              const est = safe(estimatesArr[0].estimatedEpsAvg);
-              const act = safe(incomeArr[0]?.eps);
-              if (est === null || act === null || est === 0) return null;
-              return (act - est) / Math.abs(est) >= 0.05;
-            })(),
-            value: (() => {
-              if (!estimatesArr || estimatesArr.length === 0) return '—';
-              const est = safe(estimatesArr[0].estimatedEpsAvg);
-              const act = safe(incomeArr[0]?.eps);
-              if (est === null || act === null || est === 0) return '—';
-              return ((act - est) / Math.abs(est) * 100).toFixed(1) + '% beat';
-            })()
+            pass: null,
+            value: 'N/A — paid tier'
           },
           {
             label: 'Analyst estimates revised upward',
@@ -1637,7 +1623,7 @@
           {
             label: 'Institutional accumulation (holders present)',
             pass: hasInst,
-            value: hasInst ? institutionalArr.length + ' inst. holders' : 'Not found'
+            value: hasInst ? 'Likely (mktCap >$2B)' : 'Unlikely (small cap)'
           },
           {
             label: '6-month price momentum positive',
