@@ -1092,8 +1092,17 @@
         fh(`/stock/candle?symbol=${ticker}&resolution=D&from=${from}&to=${to}`)
       ]);
 
-      if (!profile || !profile.name) throw new Error(`Ticker not found: ${ticker}`);
-      if (quote.c === 0 || quote.c === null) throw new Error(`No price data for: ${ticker}`);
+      // Debug: log raw responses to console
+      console.log('PROFILE:', JSON.stringify(profile));
+      console.log('QUOTE:', JSON.stringify(quote));
+      console.log('CANDLES status:', candles?.s);
+
+      if (!profile || Object.keys(profile).length === 0) {
+        throw new Error(`Finnhub returned empty profile for ${ticker}. Check the ticker is a valid US stock symbol.`);
+      }
+      if (!quote || quote.c === undefined) {
+        throw new Error(`No quote data returned for ${ticker}.`);
+      }
 
       currentData = { ticker, quote, profile, metrics, earnings, candles };
 
