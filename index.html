@@ -1114,8 +1114,7 @@
     const sep = endpoint.includes('?') ? '&' : '?';
     const fmpUrl = `https://financialmodelingprep.com/api/${endpoint}${sep}apikey=${FMP_KEY}`;
     // CORS proxy for local file testing — remove PROXY_BASE for production hosting
-    const PROXY_BASE = 'https://corsproxy.io/?';
-    const url = PROXY_BASE + encodeURIComponent(fmpUrl);
+  const url = fmpUrl;
     const r = await fetch(url);
     if (!r.ok) throw new Error('FMP error: ' + r.status);
     return r.json();
