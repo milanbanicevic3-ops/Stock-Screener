@@ -1785,11 +1785,11 @@
       return;
     }
 
-    const { ticker, profile, quote, incomeArr, incomeAnnualArr, metricsAnnualArr } = d;
+    const { ticker, profile, quote, incomeArr, incomeAnnualArr, pegApprox } = d;
     const epsGrowthQ = calcEpsGrowthQoQ(incomeArr);
     const epsGrowthA = calcAnnualEpsGrowth(incomeAnnualArr);
     const revGrowth = calcRevenueGrowthQoQ(incomeArr);
-    const peg = safe(metricsAnnualArr[0]?.priceEarningsToGrowthRatio);
+    const peg = pegApprox;
 
     const approvedLegends = scores.filter(s => s.verdict === 'approved').map(s => s.name);
     const rejectedLegends = scores.filter(s => s.verdict === 'rejected').map(s => s.name);
