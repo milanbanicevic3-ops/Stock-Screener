@@ -994,7 +994,8 @@
 
 <script>
   const FINNHUB_KEY  = 'd71rktpr01qpd2791f7gd71rktpr01qpd2791f80';
-  const AV_KEY       = 'V6L8O4J8SVT9YYFH';
+  // Multiple AV keys — add more free keys here if needed (alphavantage.co, free signup)
+  const AV_KEYS      = ['V6L8O4J8SVT9YYFH', '1J9QQUDCPTIXC9IA'];
   const FINNHUB_BASE = 'https://finnhub.io/api/v1';
   const AV_BASE      = 'https://www.alphavantage.co/query';
   const CLAUDE_KEY_STORAGE = 'omc_claude_key';
@@ -1074,9 +1075,23 @@
 
   async function av(params) {
     const qs = Object.entries(params).map(([k,v])=>`${k}=${v}`).join('&');
-    const r = await fetch(`${AV_BASE}?${qs}&apikey=${AV_KEY}`);
-    if (!r.ok) throw new Error(`Alpha Vantage error ${r.status}`);
-    return r.json();
+    // Try each key in order — first one that isn't rate-limited wins
+    let lastError = null;
+    for (const key of AV_KEYS) {
+      const r = await fetch(`${AV_BASE}?${qs}&apikey=${key}`);
+      if (!r.ok) { lastError = `Alpha Vantage error ${r.status}`; continue; }
+      const data = await r.json();
+      // Check for rate limit in response body
+      if (data['Note'] || data['Information']) { lastError = 'rate_limit'; continue; }
+      return data;
+    }
+    if (lastError === 'rate_limit') {
+      const resetTime = new Date();
+      resetTime.setUTCHours(24, 0, 0, 0);
+      const hoursLeft = Math.ceil((resetTime - new Date()) / 3600000);
+      throw new Error(`All Alpha Vantage keys at daily limit (25 calls/day each). Resets in ~${hoursLeft}h at midnight UTC. Add more free keys at alphavantage.co or wait for reset.`);
+    }
+    throw new Error(lastError || 'Alpha Vantage fetch failed');
   }
 
   // ── MAIN ANALYSIS ─────────────────────────────────────────────────────
@@ -1118,12 +1133,6 @@
         const avData = await av({ function: 'TIME_SERIES_DAILY_ADJUSTED', symbol: ticker, outputsize: 'full' });
 
         if (avData['Error Message']) throw new Error(`Alpha Vantage: ticker ${ticker} not found.`);
-        if (avData['Note'] || avData['Information']) {
-          const resetTime = new Date();
-          resetTime.setUTCHours(24, 0, 0, 0);
-          const hoursLeft = Math.ceil((resetTime - new Date()) / 3600000);
-          throw new Error(`Alpha Vantage daily limit reached (25 calls/day free tier). Resets in ~${hoursLeft}h at midnight UTC. Try a different ticker — each ticker is only fetched once per day.`);
-        }
 
         const timeSeries = avData['Time Series (Daily)'];
         if (!timeSeries) throw new Error(`Alpha Vantage returned no price history for ${ticker}.`);
