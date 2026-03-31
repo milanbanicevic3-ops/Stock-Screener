@@ -1239,13 +1239,18 @@
     if (!earnings || earnings.length < 5) return null;
     const cur  = s(earnings[0].actual);
     const prev = s(earnings[4].actual);
+    // Both quarters must be positive — loss-to-profit flips distort % growth
+    if (cur === null || prev === null || prev <= 0 || cur <= 0) return null;
     return growth(cur, prev);
   }
 
   function epsAcceleration(earnings) {
     if (!earnings || earnings.length < 6) return null;
-    const g1 = growth(s(earnings[0].actual), s(earnings[4].actual));
-    const g2 = growth(s(earnings[1].actual), s(earnings[5].actual));
+    // Only measure acceleration when all quarters are profitable
+    const e = [0,1,4,5].map(i => s(earnings[i]?.actual));
+    if (e.some(v => v === null || v <= 0)) return null;
+    const g1 = growth(e[0], e[2]);
+    const g2 = growth(e[1], e[3]);
     if (g1===null||g2===null) return null;
     return g1 > g2;
   }
@@ -1305,8 +1310,12 @@
     // All metrics
     const epsGrowthQ  = epsGrowthQoQ(earnings);
     const epsAccel    = epsAcceleration(earnings);
-    const epsGrowthA  = s(m.epsGrowthTTMYoy) ?? s(m.epsGrowthQuarterlyYoy);
-    const revGrowthQ  = s(m.revenueGrowthQuarterlyYoy) ?? s(m.revenueGrowthTTMYoy);
+    // Cap growth rates at 5x (500%) — anything beyond that is a distortion
+    // from loss-to-profit flips, asset sales, or write-down base effects
+    const _epsGA_raw = s(m.epsGrowthTTMYoy) ?? s(m.epsGrowthQuarterlyYoy);
+    const _revG_raw  = s(m.revenueGrowthQuarterlyYoy) ?? s(m.revenueGrowthTTMYoy);
+    const epsGrowthA = (_epsGA_raw !== null && Math.abs(_epsGA_raw) <= 5.0) ? _epsGA_raw : null;
+    const revGrowthQ = (_revG_raw  !== null && Math.abs(_revG_raw)  <= 5.0) ? _revG_raw  : null;
     const epsSurprise = epsSurprisePct(earnings);
     const ma          = calcMA(closes);
     const rs3M        = calcRS(closes, 63);
