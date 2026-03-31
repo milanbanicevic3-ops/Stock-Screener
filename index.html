@@ -1081,8 +1081,11 @@
       const r = await fetch(`${AV_BASE}?${qs}&apikey=${key}`);
       if (!r.ok) { lastError = `Alpha Vantage error ${r.status}`; continue; }
       const data = await r.json();
-      // Check for rate limit in response body
-      if (data['Note'] || data['Information']) { lastError = 'rate_limit'; continue; }
+      // Rate limit responses have 'Note' or 'Information' at the TOP LEVEL (not nested in Meta Data)
+      // A successful TIME_SERIES response has 'Meta Data' and 'Time Series (Daily)' at top level
+      const isRateLimit = (data['Note'] && !data['Meta Data'] && !data['Time Series (Daily)'])
+                       || (data['Information'] && !data['Meta Data'] && !data['Time Series (Daily)']);
+      if (isRateLimit) { lastError = 'rate_limit'; continue; }
       return data;
     }
     if (lastError === 'rate_limit') {
