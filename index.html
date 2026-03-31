@@ -1075,17 +1075,25 @@
 
   async function av(params) {
     const qs = Object.entries(params).map(([k,v])=>`${k}=${v}`).join('&');
-    // Try each key in order — first one that isn't rate-limited wins
     let lastError = null;
     for (const key of AV_KEYS) {
-      const r = await fetch(`${AV_BASE}?${qs}&apikey=${key}`);
-      if (!r.ok) { lastError = `Alpha Vantage error ${r.status}`; continue; }
+      const url = `${AV_BASE}?${qs}&apikey=${key}`;
+      console.log('AV REQUEST:', url.replace(key, key.slice(0,6)+'...'));
+      const r = await fetch(url);
+      console.log('AV STATUS:', r.status);
+      if (!r.ok) { lastError = `Alpha Vantage HTTP error ${r.status}`; continue; }
       const data = await r.json();
-      // Rate limit responses have 'Note' or 'Information' at the TOP LEVEL (not nested in Meta Data)
-      // A successful TIME_SERIES response has 'Meta Data' and 'Time Series (Daily)' at top level
-      const isRateLimit = (data['Note'] && !data['Meta Data'] && !data['Time Series (Daily)'])
-                       || (data['Information'] && !data['Meta Data'] && !data['Time Series (Daily)']);
-      if (isRateLimit) { lastError = 'rate_limit'; continue; }
+      const topKeys = Object.keys(data);
+      console.log('AV TOP-LEVEL KEYS:', JSON.stringify(topKeys));
+      console.log('AV FULL RESPONSE (first 300 chars):', JSON.stringify(data).slice(0, 300));
+      // Only treat as rate limit if the response has NO time series data AND has Note/Information
+      if (!data['Time Series (Daily)'] && !data['Weekly Adjusted Time Series']) {
+        if (data['Note'] || data['Information'] || data['message']) {
+          console.log('AV RATE LIMIT DETECTED for key', key.slice(0,6));
+          lastError = 'rate_limit';
+          continue;
+        }
+      }
       return data;
     }
     if (lastError === 'rate_limit') {
