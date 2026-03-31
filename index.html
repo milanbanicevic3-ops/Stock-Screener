@@ -1087,7 +1087,7 @@
       console.log('AV TOP-LEVEL KEYS:', JSON.stringify(topKeys));
       console.log('AV FULL RESPONSE (first 300 chars):', JSON.stringify(data).slice(0, 300));
       // Only treat as rate limit if the response has NO time series data AND has Note/Information
-      if (!data['Time Series (Daily)'] && !data['Weekly Adjusted Time Series']) {
+      if (!data['Time Series (Daily)']) {
         if (data['Note'] || data['Information'] || data['message']) {
           console.log('AV RATE LIMIT DETECTED for key', key.slice(0,6));
           lastError = 'rate_limit';
@@ -1141,7 +1141,7 @@
         volumes = parsed.volumes;
         console.log(`Using cached AV price data for ${ticker} (${today})`);
       } else {
-        const avData = await av({ function: 'TIME_SERIES_DAILY_ADJUSTED', symbol: ticker, outputsize: 'full' });
+        const avData = await av({ function: 'TIME_SERIES_DAILY', symbol: ticker, outputsize: 'full' });
 
         if (avData['Error Message']) throw new Error(`Alpha Vantage: ticker ${ticker} not found.`);
 
@@ -1149,8 +1149,8 @@
         if (!timeSeries) throw new Error(`Alpha Vantage returned no price history for ${ticker}.`);
 
         const dates = Object.keys(timeSeries).sort((a,b) => b.localeCompare(a));
-        closes  = dates.map(d => parseFloat(timeSeries[d]['5. adjusted close']));
-        volumes = dates.map(d => parseFloat(timeSeries[d]['6. volume']));
+        closes  = dates.map(d => parseFloat(timeSeries[d]['4. close']));
+        volumes = dates.map(d => parseFloat(timeSeries[d]['5. volume']));
 
         // Cache today's data — expires naturally when date changes
         try {
