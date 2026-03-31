@@ -1013,6 +1013,12 @@
   let watchlist = JSON.parse(localStorage.getItem('omc_watchlist') || '[]');
   function saveWatchlist() { localStorage.setItem('omc_watchlist', JSON.stringify(watchlist)); }
 
+  function reAnalyze(ticker) {
+    document.getElementById('tickerInput').value = ticker;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(() => runAnalysis(), 300);
+  }
+
   function renderWatchlist() {
     const el = document.getElementById('watchlistSection');
     const countEl = document.getElementById('watchlistCount');
@@ -1027,7 +1033,7 @@
     watchlist.forEach((item, i) => {
       const cls = item.score >= 6 ? 'strong' : item.score >= 4 ? 'moderate' : 'weak';
       html += `<tr>
-        <td><span class="wl-ticker">${item.ticker}</span></td>
+        <td><span class="wl-ticker" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="reAnalyze('${item.ticker}')" title="Click to re-analyze">${item.ticker} ↗</span></td>
         <td style="font-size:12px;color:var(--text2)">${item.name}</td>
         <td><span class="wl-date">${item.date}</span></td>
         <td><span class="wl-score ${cls}">${item.score}/8</span></td>
