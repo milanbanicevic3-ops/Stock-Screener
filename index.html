@@ -1326,7 +1326,11 @@
     const cur         = s(quote.c);
     const pos52W      = (hi52&&lo52&&hi52!==lo52) ? (cur-lo52)/(hi52-lo52) : null;
     const aboveLow    = lo52 ? (cur-lo52)/lo52 : null;
-    const peg         = s(m.peTTM) && s(m.epsGrowthTTMYoy) > 0 ? s(m.peTTM)/(s(m.epsGrowthTTMYoy)*100) : null;
+    const _pe = s(m.peTTM);
+    const _pegGrowth = s(m.epsGrowthTTMYoy);
+    // PEG only valid when PE > 0, growth > 0, and growth not distorted
+    const peg = (_pe && _pe > 0 && _pegGrowth && _pegGrowth > 0 && _pegGrowth <= 5.0)
+                ? _pe / (_pegGrowth * 100) : null;
     const debtEq      = s(m.totalDebt__totalEquityAnnual);
     const mktCap      = s(profile.marketCapitalization,0) * 1e6;
     const instProxy   = mktCap > 2e9;
@@ -1411,7 +1415,7 @@
           { label:'Institutional presence (cap >$2B)', pass:instProxy,                               value:instProxy?'Yes':'No' },
           { label:'6-month price momentum positive',   pass:rs6M!==null?rs6M>0:null,                value:pf(rs6M) },
           { label:'EPS growth accelerating',           pass:epsAccel,                               value:epsAccel===null?'—':epsAccel?'Accelerating':'Decelerating' },
-          { label:'Not extended (≤20% above 200MA)',  pass:ma?(ma.cur<ma.ma200*1.20):null,         value:ma?((ma.cur/ma.ma200-1)*100).toFixed(1)+'% above 200MA':'—' },
+          { label:'Not extended (≤20% above 200MA)',  pass:(ma&&ma.ma200)?(ma.cur<ma.ma200*1.20):null, value:(ma&&ma.ma200)?((ma.cur/ma.ma200-1)*100).toFixed(1)+'% above 200MA':'— (needs 200d data)' },
           { label:'Revenue growth ≥15% YoY',          pass:revGrowthQ!==null?revGrowthQ>=0.15:null, value:pf(revGrowthQ) },
           { label:'Sector macro tailwind (AI)',        pass:null,                                   value:'See AI assessment' }
         ]
@@ -1423,7 +1427,9 @@
       const passed = sc.filter(c => c.pass === true).length;
       const total  = sc.length;
       const ratio  = total > 0 ? passed/total : 0;
-      const verdict = ratio >= 0.67 ? 'approved' : ratio >= 0.40 ? 'neutral' : 'rejected';
+      // Require at least 4 scoreable criteria for a meaningful verdict
+      // If fewer than 4 criteria have real data, force Neutral — not enough info to approve
+      const verdict = total < 4 ? 'neutral' : ratio >= 0.67 ? 'approved' : ratio >= 0.40 ? 'neutral' : 'rejected';
       return { ...l, passed, total, verdict };
     });
 
@@ -1512,7 +1518,8 @@
     const rejectedNames = scores.filter(s=>s.verdict==='rejected').map(s=>s.name).join(', ') || 'none';
     const epsGQ = epsGrowthQoQ(earnings);
     const epsGA = s(m.epsGrowthTTMYoy) ?? s(m.epsGrowthQuarterlyYoy);
-    const revG  = s(m.revenueGrowthQuarterlyYoy) ?? s(m.revenueGrowthTTMYoy);
+    const _revG_ai = s(m.revenueGrowthQuarterlyYoy) ?? s(m.revenueGrowthTTMYoy);
+    const revG = (_revG_ai !== null && Math.abs(_revG_ai) <= 5.0) ? _revG_ai : null;
     const pegV  = s(m.peTTM) && s(m.epsGrowthTTMYoy)>0 ? s(m.peTTM)/(s(m.epsGrowthTTMYoy)*100) : null;
 
     const prompt = `You are a senior equity analyst. Analyze ${ticker} (${profile.name}) for a professional swing trader.
