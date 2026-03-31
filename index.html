@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OMC Stock Screener — Trading Legends</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0b;
+    --surface: #111113;
+    --surface2: #18181c;
+    --surface3: #1f1f25;
+    --border: #2a2a32;
+    --border2: #363640;
+    --text: #e8e8f0;
+    --text2: #9090a8;
+    --text3: #5a5a70;
+    --gold: #c9a84c;
+    --gold2: #e8c96a;
+    --green: #3dd68c;
+    --green-dim: rgba(61,214,140,0.12);
+    --red: #f05252;
+    --red-dim: rgba(240,82,82,0.12);
+    --amber: #f0a030;
+    --amber-dim: rgba(240,160,48,0.12);
+    --blue: #5b8def;
+    --accent: #c9a84c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* NOISE TEXTURE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  /* HEADER */
+  .header {
+    position: relative;
+    padding: 32px 48px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 1;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 3px;
+    color: var(--gold);
+  }
+
+  .logo-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--border2);
+  }
+
+  .logo-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+
+  .header-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    text-transform: uppercase;
+  }
+
+  /* MAIN LAYOUT */
+  .main {
+    position: relative;
+    z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 48px 48px 80px;
+  }
+
+  /* SEARCH */
+  .search-section {
+    margin-bottom: 48px;
+  }
+
+  .search-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .search-row {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .search-input-wrap {
+    position: relative;
+    flex: 1;
+    max-width: 400px;
+  }
+
+  .ticker-prefix {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--gold);
+    pointer-events: none;
+  }
+
+  #tickerInput {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 18px;
+    font-weight: 500;
+    padding: 16px 20px 16px 42px;
+    outline: none;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: border-color 0.2s;
+  }
+
+  #tickerInput:focus {
+    border-color: var(--gold);
+  }
+
+  #tickerInput::placeholder {
+    color: var(--text3);
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .analyze-btn {
+    background: var(--gold);
+    color: #0a0a0b;
+    border: none;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 3px;
+    padding: 0 40px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    white-space: nowrap;
+  }
+
+  .analyze-btn:hover { background: var(--gold2); }
+  .analyze-btn:active { transform: scale(0.98); }
+  .analyze-btn:disabled { background: var(--border2); color: var(--text3); cursor: not-allowed; }
+
+  /* LOADING */
+  .loading-state {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  .loading-state.active { display: flex; }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ERROR */
+  .error-bar {
+    display: none;
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    color: var(--red);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    padding: 12px 16px;
+    margin-top: 12px;
+    letter-spacing: 0.5px;
+  }
+
+  .error-bar.active { display: block; }
+
+  /* RESULTS WRAPPER */
+  #resultsWrapper { display: none; }
+  #resultsWrapper.active { display: block; }
+
+  /* SNAPSHOT CARD */
+  .snapshot-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 28px 32px;
+    margin-bottom: 40px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    align-items: start;
+    animation: fadeUp 0.4s ease both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .snapshot-main {}
+
+  .snapshot-ticker {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 4px;
+    color: var(--gold);
+    line-height: 1;
+  }
+
+  .snapshot-name {
+    font-size: 15px;
+    color: var(--text2);
+    margin-top: 4px;
+    font-weight: 300;
+  }
+
+  .snapshot-tags {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    text-transform: uppercase;
+  }
+
+  .snapshot-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-top: 20px;
+  }
+
+  .metric-cell {
+    background: var(--surface2);
+    padding: 14px 16px;
+  }
+
+  .metric-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .metric-value.up { color: var(--green); }
+  .metric-value.down { color: var(--red); }
+
+  .snapshot-price-block {
+    text-align: right;
+  }
+
+  .price-big {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 52px;
+    letter-spacing: 2px;
+    line-height: 1;
+    color: var(--text);
+  }
+
+  .price-change {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .price-change.up { color: var(--green); }
+  .price-change.down { color: var(--red); }
+
+  /* SECTION TITLES */
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .section-title-text {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--text2);
+  }
+
+  .section-title-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .section-title-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* LEGEND GRID */
+  .legends-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    background: var(--border);
+    margin-bottom: 40px;
+  }
+
+  .legend-card {
+    background: var(--surface);
+    padding: 20px;
+    animation: fadeUp 0.4s ease both;
+    transition: background 0.2s;
+  }
+
+  .legend-card:hover { background: var(--surface2); }
+
+  .legend-card.approved { border-top: 2px solid var(--green); }
+  .legend-card.neutral { border-top: 2px solid var(--amber); }
+  .legend-card.rejected { border-top: 2px solid var(--red); }
+  .legend-card.pending { border-top: 2px solid var(--border2); }
+
+  .legend-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .legend-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 2px;
+    color: var(--text);
+    line-height: 1.1;
+  }
+
+  .legend-framework {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .legend-score-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border: 1px solid var(--border2);
+    color: var(--text3);
+    white-space: nowrap;
+  }
+
+  .legend-score-badge.approved { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+  .legend-score-badge.neutral { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
+  .legend-score-badge.rejected { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+
+  .legend-criteria {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .criterion {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--text2);
+    line-height: 1.4;
+  }
+
+  .criterion-icon {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+
+  .criterion-icon.pass { color: var(--green); }
+  .criterion-icon.fail { color: var(--red); }
+  .criterion-icon.neutral-icon { color: var(--amber); }
+  .criterion-icon.pending { color: var(--text3); }
+
+  .criterion-text { flex: 1; }
+  .criterion-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    white-space: nowrap;
+    margin-left: 4px;
+  }
+
+  .criterion-value.pass-val { color: var(--green); }
+  .criterion-value.fail-val { color: var(--red); }
+
+  .legend-verdict {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .verdict-approve { color: var(--green); }
+  .verdict-neutral { color: var(--amber); }
+  .verdict-reject { color: var(--red); }
+
+  /* CONSENSUS */
+  .consensus-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 32px;
+    margin-bottom: 40px;
+    animation: fadeUp 0.5s ease 0.2s both;
+  }
+
+  .consensus-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 40px;
+    align-items: center;
+  }
+
+  .consensus-score-display {
+    text-align: center;
+  }
+
+  .consensus-number {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 96px;
+    line-height: 1;
+    letter-spacing: 4px;
+  }
+
+  .consensus-number.strong { color: var(--green); }
+  .consensus-number.moderate { color: var(--amber); }
+  .consensus-number.weak { color: var(--red); }
+
+  .consensus-denom {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    color: var(--text3);
+    letter-spacing: 2px;
+    margin-top: -8px;
+  }
+
+  .consensus-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 3px;
+    margin-top: 8px;
+  }
+
+  .consensus-label.strong { color: var(--green); }
+  .consensus-label.moderate { color: var(--amber); }
+  .consensus-label.weak { color: var(--red); }
+
+  /* GAUGE BAR */
+  .gauge-wrap {
+    margin-bottom: 24px;
+  }
+
+  .gauge-track {
+    height: 6px;
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .gauge-fill {
+    height: 100%;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 0;
+  }
+
+  .gauge-fill.strong { background: var(--green); }
+  .gauge-fill.moderate { background: var(--amber); }
+  .gauge-fill.weak { background: var(--red); }
+
+  .gauge-markers {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+
+  .gauge-marker {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  .consensus-breakdown {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    margin-bottom: 24px;
+  }
+
+  .breakdown-cell {
+    background: var(--surface2);
+    padding: 12px;
+    text-align: center;
+  }
+
+  .breakdown-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .breakdown-num.approve { color: var(--green); }
+  .breakdown-num.neutral { color: var(--amber); }
+  .breakdown-num.reject { color: var(--red); }
+
+  .breakdown-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* AI SUMMARY */
+  .ai-summary-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    padding: 16px 20px;
+    margin-top: 0;
+  }
+
+  .ai-summary-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .ai-summary-text {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+    font-weight: 300;
+  }
+
+  /* FINAL VERDICT BUTTON */
+  .final-verdict {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 16px 32px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 4px;
+    border: 2px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+  }
+
+  .final-verdict.watchlist {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--green-dim);
+  }
+
+  .final-verdict.watchlist:hover {
+    background: rgba(61,214,140,0.2);
+  }
+
+  .final-verdict.monitor {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: var(--amber-dim);
+  }
+
+  .final-verdict.pass-btn {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-dim);
+  }
+
+  /* WATCHLIST */
+  .watchlist-section {
+    animation: fadeUp 0.4s ease 0.3s both;
+  }
+
+  .watchlist-empty {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 48px;
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  .watchlist-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .watchlist-table th {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text3);
+    text-transform: uppercase;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .watchlist-table td {
+    padding: 14px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  .watchlist-table tr:last-child td { border-bottom: none; }
+  .watchlist-table tr:hover td { background: var(--surface2); }
+
+  .wl-ticker {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gold);
+    letter-spacing: 1px;
+  }
+
+  .wl-score {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 1px;
+  }
+
+  .wl-score.strong { color: var(--green); }
+  .wl-score.moderate { color: var(--amber); }
+  .wl-score.weak { color: var(--red); }
+
+  .wl-notes-input {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text2);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    padding: 4px 8px;
+    width: 100%;
+    min-width: 180px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .wl-notes-input:focus {
+    border-color: var(--border2);
+    background: var(--surface3);
+  }
+
+  .wl-remove-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+
+  .wl-remove-btn:hover {
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .wl-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  /* CHART UPLOAD SECTION */
+  .chart-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 32px;
+    margin-bottom: 40px;
+    animation: fadeUp 0.4s ease both;
+  }
+
+  .upload-zone {
+    border: 2px dashed var(--border2);
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--gold);
+    background: rgba(201,168,76,0.04);
+  }
+
+  .upload-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+    color: var(--text3);
+  }
+
+  .upload-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  .upload-sub {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 6px;
+    opacity: 0.6;
+  }
+
+  .chart-preview-wrap {
+    display: none;
+    margin-top: 20px;
+  }
+
+  .chart-preview-wrap.active { display: block; }
+
+  .chart-preview-img {
+    width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .analyze-chart-btn {
+    background: transparent;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 3px;
+    padding: 12px 32px;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: all 0.2s;
+    width: 100%;
+  }
+
+  .analyze-chart-btn:hover {
+    background: rgba(201,168,76,0.1);
+  }
+
+  .chart-analysis-result {
+    display: none;
+    margin-top: 20px;
+  }
+
+  .chart-analysis-result.active { display: block; }
+
+  .entry-legend-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    padding: 16px 20px;
+    margin-bottom: 8px;
+  }
+
+  .entry-legend-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin-bottom: 6px;
+  }
+
+  .entry-legend-text {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+    font-weight: 300;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 1100px) {
+    .legends-grid { grid-template-columns: repeat(2, 1fr); }
+    .consensus-grid { grid-template-columns: 1fr; }
+    .snapshot-metrics { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 700px) {
+    .main { padding: 24px; }
+    .header { padding: 20px 24px; }
+    .legends-grid { grid-template-columns: 1fr; }
+    .snapshot-card { grid-template-columns: 1fr; }
+    .snapshot-metrics { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">OMC</div>
+    <div class="logo-sep"></div>
+    <div class="logo-sub">Stock Screener · Trading Legends</div>
+  </div>
+  <div class="header-badge">v1.0 · FMP + Claude</div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SEARCH -->
+  <div class="search-section">
+    <div class="search-label">Enter Ticker Symbol</div>
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <span class="ticker-prefix">$</span>
+        <input type="text" id="tickerInput" placeholder="AAPL, NVDA, TSLA..." maxlength="10" autocomplete="off" />
+      </div>
+      <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">Analyze</button>
+    </div>
+    <div class="loading-state" id="loadingState">
+      <div class="spinner"></div>
+      <span id="loadingMsg">Fetching fundamental data...</span>
+    </div>
+    <div class="error-bar" id="errorBar"></div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="resultsWrapper">
+
+    <!-- SNAPSHOT -->
+    <div id="snapshotCard"></div>
+
+    <!-- LEGEND SCORECARDS -->
+    <div class="section-title">
+      <span class="section-title-text">Legend Scorecards</span>
+      <div class="section-title-line"></div>
+      <span class="section-title-count" id="legendCount">8 Frameworks</span>
+    </div>
+    <div class="legends-grid" id="legendsGrid"></div>
+
+    <!-- CONSENSUS -->
+    <div class="section-title">
+      <span class="section-title-text">Consensus Verdict</span>
+      <div class="section-title-line"></div>
+    </div>
+    <div class="consensus-section" id="consensusSection"></div>
+
+    <!-- CHART UPLOAD -->
+    <div class="section-title">
+      <span class="section-title-text">Technical Entry Analysis</span>
+      <div class="section-title-line"></div>
+      <span class="section-title-count">TradingView Screenshot</span>
+    </div>
+    <div class="chart-section" id="chartSection">
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="chartUpload" accept="image/*" onchange="handleChartUpload(event)" />
+        <div class="upload-icon">📈</div>
+        <div class="upload-text">Drop TradingView screenshot here or click to upload</div>
+        <div class="upload-sub">PNG, JPG · Chart will be analyzed for legend entry points</div>
+      </div>
+      <div class="chart-preview-wrap" id="chartPreviewWrap">
+        <img id="chartPreviewImg" class="chart-preview-img" src="" alt="Chart" />
+        <button class="analyze-chart-btn" id="analyzeChartBtn" onclick="analyzeChart()">
+          Analyze Entry Points for All Legends
+        </button>
+      </div>
+      <div class="chart-analysis-result" id="chartAnalysisResult"></div>
+    </div>
+
+    <!-- WATCHLIST -->
+    <div class="section-title">
+      <span class="section-title-text">Watchlist</span>
+      <div class="section-title-line"></div>
+      <span class="section-title-count" id="watchlistCount">0 Stocks</span>
+    </div>
+    <div class="watchlist-section" id="watchlistSection"></div>
+
+  </div>
+</div>
+
+<script>
+  const FINNHUB_KEY  = 'd71rktpr01qpd2791f7gd71rktpr01qpd2791f80';
+  // Multiple AV keys — add more free keys here if needed (alphavantage.co, free signup)
+  const AV_KEYS      = ['V6L8O4J8SVT9YYFH', '1J9QQUDCPTIXC9IA'];
+  const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+  const AV_BASE      = 'https://www.alphavantage.co/query';
+  const CLAUDE_KEY_STORAGE = 'omc_claude_key';
+
+  function getClaudeKey() {
+    let k = localStorage.getItem(CLAUDE_KEY_STORAGE);
+    if (!k) {
+      k = prompt('Enter your Anthropic API key (stored locally only):');
+      if (k) localStorage.setItem(CLAUDE_KEY_STORAGE, k.trim());
+    }
+    return k;
+  }
+
+  // ── WATCHLIST ─────────────────────────────────────────────────────────
+  let watchlist = JSON.parse(localStorage.getItem('omc_watchlist') || '[]');
+  function saveWatchlist() { localStorage.setItem('omc_watchlist', JSON.stringify(watchlist)); }
+
+  function renderWatchlist() {
+    const el = document.getElementById('watchlistSection');
+    const countEl = document.getElementById('watchlistCount');
+    countEl.textContent = watchlist.length + ' Stock' + (watchlist.length !== 1 ? 's' : '');
+    if (watchlist.length === 0) {
+      el.innerHTML = '<div class="watchlist-empty">No stocks on watchlist yet — run an analysis and add qualifying stocks</div>';
+      return;
+    }
+    let html = `<table class="watchlist-table"><thead><tr>
+      <th>Ticker</th><th>Company</th><th>Added</th><th>Score</th><th>Price at Add</th><th>Technical Notes</th><th></th>
+    </tr></thead><tbody>`;
+    watchlist.forEach((item, i) => {
+      const cls = item.score >= 6 ? 'strong' : item.score >= 4 ? 'moderate' : 'weak';
+      html += `<tr>
+        <td><span class="wl-ticker">${item.ticker}</span></td>
+        <td style="font-size:12px;color:var(--text2)">${item.name}</td>
+        <td><span class="wl-date">${item.date}</span></td>
+        <td><span class="wl-score ${cls}">${item.score}/8</span></td>
+        <td><span style="font-family:'DM Mono',monospace;font-size:12px">$${item.price}</span></td>
+        <td><input class="wl-notes-input" placeholder="Technical entry thesis..." value="${item.notes||''}" onchange="updateNote(${i},this.value)"/></td>
+        <td><button class="wl-remove-btn" onclick="removeFromWatchlist(${i})">Remove</button></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }
+
+  function addToWatchlist(ticker, name, score, price) {
+    if (watchlist.find(w => w.ticker === ticker)) { alert(ticker + ' already on watchlist.'); return; }
+    watchlist.unshift({ ticker, name, score, price,
+      date: new Date().toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'2-digit'}), notes: '' });
+    saveWatchlist(); renderWatchlist();
+  }
+  function removeFromWatchlist(i) { watchlist.splice(i,1); saveWatchlist(); renderWatchlist(); }
+  function updateNote(i, val) { watchlist[i].notes = val; saveWatchlist(); }
+
+  // ── LOADING ───────────────────────────────────────────────────────────
+  const loadMsgs = [
+    'Fetching quote & profile...', 'Pulling key metrics...',
+    'Loading earnings history...', 'Fetching price history...',
+    'Building MA calculations...', 'Scoring 8 frameworks...'
+  ];
+  let loadInterval;
+  function showLoading() {
+    const el = document.getElementById('loadingState'), msg = document.getElementById('loadingMsg');
+    el.classList.add('active'); let i = 0; msg.textContent = loadMsgs[0];
+    loadInterval = setInterval(() => { i=(i+1)%loadMsgs.length; msg.textContent=loadMsgs[i]; }, 1600);
+  }
+  function hideLoading() { document.getElementById('loadingState').classList.remove('active'); clearInterval(loadInterval); }
+  function showError(m) { const el=document.getElementById('errorBar'); el.textContent='⚠ '+m; el.classList.add('active'); }
+  function clearError() { document.getElementById('errorBar').classList.remove('active'); }
+
+  // ── FETCH HELPERS ─────────────────────────────────────────────────────
+  async function fh(path) {
+    const sep = path.includes('?') ? '&' : '?';
+    const r = await fetch(`${FINNHUB_BASE}${path}${sep}token=${FINNHUB_KEY}`);
+    if (!r.ok) throw new Error(`Finnhub error ${r.status} on ${path}`);
+    return r.json();
+  }
+
+  async function av(params) {
+    const qs = Object.entries(params).map(([k,v])=>`${k}=${v}`).join('&');
+    let lastError = null;
+    for (const key of AV_KEYS) {
+      const url = `${AV_BASE}?${qs}&apikey=${key}`;
+      console.log('AV REQUEST:', url.replace(key, key.slice(0,6)+'...'));
+      const r = await fetch(url);
+      console.log('AV STATUS:', r.status);
+      if (!r.ok) { lastError = `Alpha Vantage HTTP error ${r.status}`; continue; }
+      const data = await r.json();
+      const topKeys = Object.keys(data);
+      console.log('AV TOP-LEVEL KEYS:', JSON.stringify(topKeys));
+      console.log('AV FULL RESPONSE (first 300 chars):', JSON.stringify(data).slice(0, 300));
+      // Only treat as rate limit if the response has NO time series data AND has Note/Information
+      if (!data['Time Series (Daily)']) {
+        if (data['Note'] || data['Information'] || data['message']) {
+          console.log('AV RATE LIMIT DETECTED for key', key.slice(0,6));
+          lastError = 'rate_limit';
+          continue;
+        }
+      }
+      return data;
+    }
+    if (lastError === 'rate_limit') {
+      const resetTime = new Date();
+      resetTime.setUTCHours(24, 0, 0, 0);
+      const hoursLeft = Math.ceil((resetTime - new Date()) / 3600000);
+      throw new Error(`All Alpha Vantage keys at daily limit (25 calls/day each). Resets in ~${hoursLeft}h at midnight UTC. Add more free keys at alphavantage.co or wait for reset.`);
+    }
+    throw new Error(lastError || 'Alpha Vantage fetch failed');
+  }
+
+  // ── MAIN ANALYSIS ─────────────────────────────────────────────────────
+  let currentData = {};
+
+  async function runAnalysis() {
+    const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+    if (!ticker) return;
+    clearError();
+    document.getElementById('resultsWrapper').classList.remove('active');
+    document.getElementById('analyzeBtn').disabled = true;
+    showLoading();
+
+    try {
+      // Finnhub calls in parallel (all free tier)
+      const [quote, profile, metrics, earnings] = await Promise.all([
+        fh(`/quote?symbol=${ticker}`),
+        fh(`/stock/profile2?symbol=${ticker}`),
+        fh(`/stock/metric?symbol=${ticker}&metric=all`),
+        fh(`/stock/earnings?symbol=${ticker}&limit=8`)
+      ]);
+
+      if (!profile || !profile.name) throw new Error(`Ticker not found: ${ticker}. Check the symbol is a valid US stock.`);
+      if (!quote || !quote.c) throw new Error(`No quote data returned for ${ticker}.`);
+
+      // Alpha Vantage — last 100 days of daily prices (free tier: compact only)
+      // Cache in localStorage keyed by ticker+date to avoid burning daily calls on re-analysis
+      const today = new Date().toISOString().slice(0,10);
+      const cacheKey = `omc_av_${ticker}_${today}`;
+      let closes, volumes;
+
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        closes  = parsed.closes;
+        volumes = parsed.volumes;
+        console.log(`Using cached AV price data for ${ticker} (${today})`);
+      } else {
+        const avData = await av({ function: 'TIME_SERIES_DAILY', symbol: ticker, outputsize: 'compact' });
+
+        if (avData['Error Message']) throw new Error(`Alpha Vantage: ticker ${ticker} not found.`);
+
+        const timeSeries = avData['Time Series (Daily)'];
+        if (!timeSeries) throw new Error(`Alpha Vantage returned no price history for ${ticker}.`);
+
+        const dates = Object.keys(timeSeries).sort((a,b) => b.localeCompare(a));
+        closes  = dates.map(d => parseFloat(timeSeries[d]['4. close']));
+        volumes = dates.map(d => parseFloat(timeSeries[d]['5. volume']));
+
+        // Cache today's data — expires naturally when date changes
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ closes, volumes }));
+          // Clean up old cache entries (keep storage tidy)
+          Object.keys(localStorage)
+            .filter(k => k.startsWith('omc_av_') && !k.includes(today))
+            .forEach(k => localStorage.removeItem(k));
+        } catch(e) { /* storage full — ignore */ }
+      }
+
+      currentData = { ticker, quote, profile, metrics, earnings, closes, volumes };
+
+      renderSnapshot(currentData);
+      const scores = renderLegends(currentData);
+      await renderConsensus(currentData, scores);
+
+      document.getElementById('chartPreviewWrap').classList.remove('active');
+      document.getElementById('chartAnalysisResult').classList.remove('active');
+      document.getElementById('chartAnalysisResult').innerHTML = '';
+      document.getElementById('resultsWrapper').classList.add('active');
+
+    } catch(e) {
+      showError(e.message || 'Failed to fetch data. Check ticker and try again.');
+    } finally {
+      hideLoading();
+      document.getElementById('analyzeBtn').disabled = false;
+    }
+  }
+
+  // ── HELPERS ───────────────────────────────────────────────────────────
+  function s(v, fb=null) { return (v===undefined||v===null||v===''||isNaN(Number(v))) ? fb : Number(v); }
+  function fmt(n) {
+    if (n===null||n===undefined||isNaN(n)) return '—';
+    if (Math.abs(n)>=1e12) return (n/1e12).toFixed(2)+'T';
+    if (Math.abs(n)>=1e9)  return (n/1e9).toFixed(2)+'B';
+    if (Math.abs(n)>=1e6)  return (n/1e6).toFixed(2)+'M';
+    return n.toLocaleString();
+  }
+  function dp(v,d=2) { return (v!==null&&v!==undefined&&!isNaN(Number(v))) ? Number(v).toFixed(d) : '—'; }
+  function pf(v) { return v!==null&&v!==undefined ? (v*100).toFixed(1)+'%' : '—'; }
+  function avgArr(arr) { return arr.reduce((a,b)=>a+b,0)/arr.length; }
+  function growth(curr,prev) { if(!prev||prev===0||curr===null||curr===undefined) return null; return (curr-prev)/Math.abs(prev); }
+
+  // ── PRICE HISTORY CALCULATIONS (from Alpha Vantage closes array, newest→oldest) ──
+  function calcMA(closes) {
+    // closes[0] = most recent (compact = ~100 days)
+    if (closes.length < 50) return null;
+    const cur  = closes[0];
+    const ma50 = avgArr(closes.slice(0, 50));
+    // 150MA and 200MA only if we have enough data
+    const ma150 = closes.length >= 150 ? avgArr(closes.slice(0, 150)) : null;
+    const ma200 = closes.length >= 200 ? avgArr(closes.slice(0, 200)) : null;
+    const ma200old = closes.length >= 230 ? avgArr(closes.slice(30, 230)) : null;
+    return {
+      cur, ma50, ma150, ma200,
+      above50:  cur > ma50,
+      above150: ma150 ? cur > ma150 : null,
+      above200: ma200 ? cur > ma200 : null,
+      ma150aboveMa200: (ma150 && ma200) ? ma150 > ma200 : null,
+      ma200trending: (ma200 && ma200old) ? ma200 > ma200old : null
+    };
+  }
+
+  function calcRS(closes, period) {
+    if (closes.length < period + 1) return null;
+    // closes[0]=now, closes[period]=period days ago
+    return growth(closes[0], closes[period]);
+  }
+
+  function calcVolTrend(volumes) {
+    if (volumes.length < 30) return null;
+    const recent = avgArr(volumes.slice(0, 10));
+    const older  = avgArr(volumes.slice(10, 30));
+    return older > 0 ? recent / older : null;
+  }
+
+  // ── EPS HELPERS (Finnhub earnings array, newest first) ────────────────
+  function epsGrowthQoQ(earnings) {
+    if (!earnings || earnings.length < 5) return null;
+    const cur  = s(earnings[0].actual);
+    const prev = s(earnings[4].actual);
+    return growth(cur, prev);
+  }
+
+  function epsAcceleration(earnings) {
+    if (!earnings || earnings.length < 6) return null;
+    const g1 = growth(s(earnings[0].actual), s(earnings[4].actual));
+    const g2 = growth(s(earnings[1].actual), s(earnings[5].actual));
+    if (g1===null||g2===null) return null;
+    return g1 > g2;
+  }
+
+  function epsSurprisePct(earnings) {
+    if (!earnings || earnings.length === 0) return null;
+    const sp = s(earnings[0].surprisePercent);
+    return sp !== null ? sp / 100 : null;
+  }
+
+  // ── SNAPSHOT ──────────────────────────────────────────────────────────
+  function renderSnapshot(d) {
+    const { ticker, quote, profile, metrics, closes } = d;
+    const m      = metrics?.metric || {};
+    const cur    = s(quote.c, 0);
+    const chgPct = s(quote.dp, 0);
+    const chgCls = chgPct >= 0 ? 'up' : 'down';
+    const sign   = chgPct >= 0 ? '+' : '';
+    const hi52   = s(m['52WeekHigh'] || quote.h, 0);
+    const lo52   = s(m['52WeekLow']  || quote.l, 0);
+    const mktCap = s(profile.marketCapitalization, 0) * 1e6;
+    const ma     = calcMA(closes);
+
+    document.getElementById('snapshotCard').innerHTML = `
+      <div class="snapshot-card">
+        <div class="snapshot-main">
+          <div class="snapshot-ticker">${ticker}</div>
+          <div class="snapshot-name">${profile.name}</div>
+          <div class="snapshot-tags">
+            <span class="tag">${profile.finnhubIndustry || 'N/A'}</span>
+            <span class="tag">${profile.exchange || ''}</span>
+            <span class="tag">${profile.country || ''}</span>
+            <span class="tag">IPO: ${profile.ipo || 'N/A'}</span>
+          </div>
+          <div class="snapshot-metrics">
+            <div class="metric-cell"><div class="metric-label">Market Cap</div><div class="metric-value">$${fmt(mktCap)}</div></div>
+            <div class="metric-cell"><div class="metric-label">52W High</div><div class="metric-value">$${dp(hi52)}</div></div>
+            <div class="metric-cell"><div class="metric-label">52W Low</div><div class="metric-value">$${dp(lo52)}</div></div>
+            <div class="metric-cell"><div class="metric-label">200-day MA</div><div class="metric-value">${ma ? '$'+dp(ma.ma200) : '—'}</div></div>
+          </div>
+        </div>
+        <div class="snapshot-price-block">
+          <div class="price-big">$${dp(cur)}</div>
+          <div class="price-change ${chgCls}">${sign}${dp(chgPct,2)}% today</div>
+          <div style="margin-top:12px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">
+            PE: ${dp(s(m.peBasicExclExtraTTM))} &nbsp;|&nbsp; Beta: ${dp(s(m.beta),2)}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── LEGEND SCORING ────────────────────────────────────────────────────
+  function renderLegends(d) {
+    const { quote, profile, metrics, earnings, closes, volumes } = d;
+    const m = metrics?.metric || {};
+
+    // All metrics
+    const epsGrowthQ  = epsGrowthQoQ(earnings);
+    const epsAccel    = epsAcceleration(earnings);
+    const epsGrowthA  = s(m.epsGrowthTTMYoy) ?? s(m.epsGrowthQuarterlyYoy);
+    const revGrowthQ  = s(m.revenueGrowthQuarterlyYoy) ?? s(m.revenueGrowthTTMYoy);
+    const epsSurprise = epsSurprisePct(earnings);
+    const ma          = calcMA(closes);
+    const rs3M        = calcRS(closes, 63);
+    const rs6M        = calcRS(closes, 126);
+    const volTrend    = calcVolTrend(volumes);
+    const hi52        = s(m['52WeekHigh']) || s(quote.h);
+    const lo52        = s(m['52WeekLow'])  || s(quote.l);
+    const cur         = s(quote.c);
+    const pos52W      = (hi52&&lo52&&hi52!==lo52) ? (cur-lo52)/(hi52-lo52) : null;
+    const aboveLow    = lo52 ? (cur-lo52)/lo52 : null;
+    const peg         = s(m.peTTM) && s(m.epsGrowthTTMYoy) > 0 ? s(m.peTTM)/(s(m.epsGrowthTTMYoy)*100) : null;
+    const debtEq      = s(m.totalDebt__totalEquityAnnual);
+    const mktCap      = s(profile.marketCapitalization,0) * 1e6;
+    const instProxy   = mktCap > 2e9;
+    const currEPS     = earnings?.length > 0 ? s(earnings[0].actual) : null;
+
+    const legends = [
+      {
+        name:"O'Neil", framework:'CAN SLIM', delay:0,
+        criteria:[
+          { label:'Quarterly EPS growth ≥20% YoY',     pass:epsGrowthQ!==null?epsGrowthQ>=0.20:null,  value:pf(epsGrowthQ) },
+          { label:'EPS acceleration (recent > prior)',  pass:epsAccel,                                 value:epsAccel===null?'—':epsAccel?'Yes':'No' },
+          { label:'Annual EPS growth ≥25%',             pass:epsGrowthA!==null?epsGrowthA>=0.25:null, value:pf(epsGrowthA) },
+          { label:'Price within 25% of 52W high',      pass:pos52W!==null?pos52W>=0.75:null,          value:pos52W!==null?(pos52W*100).toFixed(0)+'% of range':'—' },
+          { label:'Institutional presence (cap >$2B)', pass:instProxy,                                value:instProxy?'Yes':'No' },
+          { label:'Revenue growth ≥20% YoY',           pass:revGrowthQ!==null?revGrowthQ>=0.20:null, value:pf(revGrowthQ) }
+        ]
+      },
+      {
+        name:'Minervini', framework:'SEPA', delay:1,
+        criteria:[
+          { label:'Price above 150 & 200-day MA',      pass:ma?(ma.above150&&ma.above200):null,       value:ma?(ma.above150&&ma.above200?'Yes':'No'):'—' },
+          { label:'150 MA above 200 MA',               pass:ma?ma.ma150aboveMa200:null,               value:ma?(ma.ma150aboveMa200?'Yes':'No'):'—' },
+          { label:'200 MA trending up (vs 30d ago)',   pass:ma?ma.ma200trending:null,                 value:ma?(ma.ma200trending?'Trending up':'Flat/down'):'—' },
+          { label:'52W low ≥30% below current',       pass:aboveLow!==null?aboveLow>=0.30:null,      value:aboveLow!==null?(aboveLow*100).toFixed(0)+'% above low':'—' },
+          { label:'EPS acceleration present',          pass:epsAccel,                                 value:epsAccel===null?'—':epsAccel?'Yes':'No' },
+          { label:'Price above 50-day MA',             pass:ma?ma.above50:null,                       value:ma?(ma.above50?'Yes':'No'):'—' }
+        ]
+      },
+      {
+        name:'Lynch', framework:'GARP', delay:2,
+        criteria:[
+          { label:'PEG ratio below 1.0',               pass:peg!==null?(peg<1.0&&peg>0):null,        value:peg!==null?dp(peg):'—' },
+          { label:'Revenue growth ≥15% YoY',           pass:revGrowthQ!==null?revGrowthQ>=0.15:null, value:pf(revGrowthQ) },
+          { label:'Debt/Equity manageable (<1.0)',      pass:debtEq!==null?debtEq<1.0:null,           value:debtEq!==null?dp(debtEq):'—' },
+          { label:'Positive EPS (profitable)',          pass:currEPS!==null?currEPS>0:null,           value:currEPS!==null?'$'+dp(currEPS):'—' },
+          { label:'Annual EPS growth ≥15%',            pass:epsGrowthA!==null?epsGrowthA>=0.15:null, value:pf(epsGrowthA) }
+        ]
+      },
+      {
+        name:'Livermore', framework:'Leader Filter', delay:3,
+        criteria:[
+          { label:'Price within 15% of 52W high',      pass:pos52W!==null?pos52W>=0.85:null,         value:pos52W!==null?(pos52W*100).toFixed(0)+'% of range':'—' },
+          { label:'6-month relative strength positive',pass:rs6M!==null?rs6M>0:null,                 value:pf(rs6M) },
+          { label:'Volume expanding (10d vs 30d)',     pass:volTrend!==null?volTrend>=1.0:null,      value:volTrend!==null?volTrend.toFixed(2)+'x':'—' },
+          { label:'Price above 50-day MA',             pass:ma?ma.above50:null,                      value:ma?(ma.above50?'Above':'Below'):'—' },
+          { label:'Positive quarterly EPS growth',     pass:epsGrowthQ!==null?epsGrowthQ>0:null,     value:pf(epsGrowthQ) }
+        ]
+      },
+      {
+        name:'Bonde', framework:'PEAD · Episodic Pivot', delay:4,
+        criteria:[
+          { label:'EPS beat vs estimate ≥5%',          pass:epsSurprise!==null?epsSurprise>=0.05:null, value:epsSurprise!==null?pf(epsSurprise)+' surprise':'—' },
+          { label:'EPS acceleration present',          pass:epsAccel,                                  value:epsAccel===null?'—':epsAccel?'Yes':'No' },
+          { label:'Price within 20% of 52W high',     pass:pos52W!==null?pos52W>=0.80:null,           value:pos52W!==null?(pos52W*100).toFixed(0)+'% of range':'—' },
+          { label:'Revenue growth ≥20% YoY',          pass:revGrowthQ!==null?revGrowthQ>=0.20:null,  value:pf(revGrowthQ) },
+          { label:'Annual EPS growth ≥20%',           pass:epsGrowthA!==null?epsGrowthA>=0.20:null,  value:pf(epsGrowthA) }
+        ]
+      },
+      {
+        name:'Zanger', framework:'Volume Breakout', delay:5,
+        criteria:[
+          { label:'Price above all MAs (50/150/200)',  pass:ma?(ma.above50&&ma.above150&&ma.above200):null, value:ma?(ma.above50&&ma.above150&&ma.above200?'Yes':'No'):'—' },
+          { label:'Volume expanding vs 30d avg',       pass:volTrend!==null?volTrend>=1.1:null,      value:volTrend!==null?volTrend.toFixed(2)+'x avg':'—' },
+          { label:'3-month relative strength ≥10%',   pass:rs3M!==null?rs3M>=0.10:null,             value:pf(rs3M) },
+          { label:'Near 52W high (≥80% of range)',    pass:pos52W!==null?pos52W>=0.80:null,         value:pos52W!==null?(pos52W*100).toFixed(0)+'% of range':'—' },
+          { label:'Quarterly EPS growth ≥20%',        pass:epsGrowthQ!==null?epsGrowthQ>=0.20:null, value:pf(epsGrowthQ) }
+        ]
+      },
+      {
+        name:'Williams', framework:'Relative Strength', delay:6,
+        criteria:[
+          { label:'3-month RS ≥15%',                  pass:rs3M!==null?rs3M>=0.15:null,             value:pf(rs3M) },
+          { label:'6-month RS ≥10%',                  pass:rs6M!==null?rs6M>=0.10:null,             value:pf(rs6M) },
+          { label:'Price above 50-day MA',            pass:ma?ma.above50:null,                      value:ma?(ma.above50?'Yes':'No'):'—' },
+          { label:'Near 52W high (≥75% of range)',   pass:pos52W!==null?pos52W>=0.75:null,         value:pos52W!==null?(pos52W*100).toFixed(0)+'% of range':'—' },
+          { label:'Quarterly EPS growth ≥10%',        pass:epsGrowthQ!==null?epsGrowthQ>=0.10:null, value:pf(epsGrowthQ) }
+        ]
+      },
+      {
+        name:'Druckenmiller', framework:'Macro · Earnings', delay:7,
+        criteria:[
+          { label:'Institutional presence (cap >$2B)', pass:instProxy,                               value:instProxy?'Yes':'No' },
+          { label:'6-month price momentum positive',   pass:rs6M!==null?rs6M>0:null,                value:pf(rs6M) },
+          { label:'EPS growth accelerating',           pass:epsAccel,                               value:epsAccel===null?'—':epsAccel?'Accelerating':'Decelerating' },
+          { label:'Not extended (≤20% above 200MA)',  pass:ma?(ma.cur<ma.ma200*1.20):null,         value:ma?((ma.cur/ma.ma200-1)*100).toFixed(1)+'% above 200MA':'—' },
+          { label:'Revenue growth ≥15% YoY',          pass:revGrowthQ!==null?revGrowthQ>=0.15:null, value:pf(revGrowthQ) },
+          { label:'Sector macro tailwind (AI)',        pass:null,                                   value:'See AI assessment' }
+        ]
+      }
+    ];
+
+    const scores = legends.map(l => {
+      const sc = l.criteria.filter(c => c.pass !== null);
+      const passed = sc.filter(c => c.pass === true).length;
+      const total  = sc.length;
+      const ratio  = total > 0 ? passed/total : 0;
+      const verdict = ratio >= 0.67 ? 'approved' : ratio >= 0.40 ? 'neutral' : 'rejected';
+      return { ...l, passed, total, verdict };
+    });
+
+    document.getElementById('legendsGrid').innerHTML = scores.map(l => {
+      const vl = l.verdict==='approved'?'▲ Approves':l.verdict==='neutral'?'◆ Neutral':'▼ Rejects';
+      const vc = 'verdict-'+(l.verdict==='approved'?'approve':l.verdict);
+      return `<div class="legend-card ${l.verdict}" style="animation-delay:${l.delay*0.06}s">
+        <div class="legend-header">
+          <div><div class="legend-name">${l.name}</div><div class="legend-framework">${l.framework}</div></div>
+          <span class="legend-score-badge ${l.verdict}">${l.passed}/${l.total}</span>
+        </div>
+        <ul class="legend-criteria">
+          ${l.criteria.map(c => {
+            const ic = c.pass===null?'pending':c.pass?'pass':'fail';
+            const icon = c.pass===null?'·':c.pass?'✓':'✗';
+            const vc2 = c.pass===null?'':(c.pass?'pass-val':'fail-val');
+            return `<li class="criterion">
+              <span class="criterion-icon ${ic}">${icon}</span>
+              <span class="criterion-text">${c.label}</span>
+              <span class="criterion-value ${vc2}">${c.value}</span>
+            </li>`;
+          }).join('')}
+        </ul>
+        <div class="legend-verdict ${vc}">${vl}</div>
+      </div>`;
+    }).join('');
+
+    return scores;
+  }
+
+  // ── CONSENSUS ─────────────────────────────────────────────────────────
+  async function renderConsensus(d, scores) {
+    const approved = scores.filter(s=>s.verdict==='approved').length;
+    const neutral  = scores.filter(s=>s.verdict==='neutral').length;
+    const rejected = scores.filter(s=>s.verdict==='rejected').length;
+    const total    = scores.length;
+    const cls      = approved>=6?'strong':approved>=4?'moderate':'weak';
+    const label    = approved>=6?'Strong Buy Candidate':approved>=4?'Watch & Investigate':'Does Not Qualify';
+    const gaugePct = (approved/total*100).toFixed(0);
+    const btnClass = approved>=6?'watchlist':approved>=4?'monitor':'pass-btn';
+    const btnText  = approved>=6?'+ Add to Watchlist':approved>=4?'Monitor — Needs More Work':'Pass — Does Not Qualify';
+    const price    = s(d.quote.c,0).toFixed(2);
+    const safeName = (d.profile.name||d.ticker).replace(/'/g,"\\'");
+    const btnAction = approved>=6 ? `addToWatchlist('${d.ticker}','${safeName}',${approved},'${price}')` : '';
+
+    document.getElementById('consensusSection').innerHTML = `
+      <div class="consensus-grid">
+        <div class="consensus-score-display">
+          <div class="consensus-number ${cls}">${approved}</div>
+          <div class="consensus-denom">OUT OF ${total}</div>
+          <div class="consensus-label ${cls}">${label}</div>
+        </div>
+        <div>
+          <div class="gauge-wrap">
+            <div class="gauge-track"><div class="gauge-fill ${cls}" id="gaugeFill" style="width:0%"></div></div>
+            <div class="gauge-markers">
+              <span class="gauge-marker">0</span><span class="gauge-marker">2 — Pass</span>
+              <span class="gauge-marker">4 — Watch</span><span class="gauge-marker">6 — Buy</span>
+              <span class="gauge-marker">8</span>
+            </div>
+          </div>
+          <div class="consensus-breakdown">
+            <div class="breakdown-cell"><div class="breakdown-num approve">${approved}</div><div class="breakdown-lbl">Approve</div></div>
+            <div class="breakdown-cell"><div class="breakdown-num neutral">${neutral}</div><div class="breakdown-lbl">Neutral</div></div>
+            <div class="breakdown-cell"><div class="breakdown-num reject">${rejected}</div><div class="breakdown-lbl">Reject</div></div>
+          </div>
+          <div class="ai-summary-box">
+            <div class="ai-summary-label">⬡ Claude AI Assessment</div>
+            <div class="ai-summary-text" id="aiSummaryText">Generating assessment...</div>
+          </div>
+        </div>
+      </div>
+      <button class="final-verdict ${btnClass}" onclick="${btnAction}">${btnText}</button>`;
+
+    setTimeout(() => { const gf=document.getElementById('gaugeFill'); if(gf) gf.style.width=gaugePct+'%'; }, 100);
+    await generateAISummary(d, scores, approved);
+  }
+
+  // ── CLAUDE AI SUMMARY ─────────────────────────────────────────────────
+  async function generateAISummary(d, scores, approvedCount) {
+    const key = getClaudeKey();
+    if (!key) { document.getElementById('aiSummaryText').textContent='No Anthropic API key provided.'; return; }
+    const { ticker, quote, profile, metrics, earnings } = d;
+    const m = metrics?.metric || {};
+    const approvedNames = scores.filter(s=>s.verdict==='approved').map(s=>s.name).join(', ') || 'none';
+    const rejectedNames = scores.filter(s=>s.verdict==='rejected').map(s=>s.name).join(', ') || 'none';
+    const epsGQ = epsGrowthQoQ(earnings);
+    const epsGA = s(m.epsGrowthTTMYoy) ?? s(m.epsGrowthQuarterlyYoy);
+    const revG  = s(m.revenueGrowthQuarterlyYoy) ?? s(m.revenueGrowthTTMYoy);
+    const pegV  = s(m.peTTM) && s(m.epsGrowthTTMYoy)>0 ? s(m.peTTM)/(s(m.epsGrowthTTMYoy)*100) : null;
+
+    const prompt = `You are a senior equity analyst. Analyze ${ticker} (${profile.name}) for a professional swing trader.
+
+Data:
+- Industry: ${profile.finnhubIndustry||'N/A'}, Exchange: ${profile.exchange||'N/A'}
+- Price: $${dp(s(quote.c))}, Market Cap: $${fmt(s(profile.marketCapitalization,0)*1e6)}
+- Quarterly EPS growth YoY: ${pf(epsGQ)}
+- Annual EPS growth TTM: ${pf(epsGA)}
+- Revenue growth YoY: ${pf(revG)}
+- PEG: ${pegV!==null?dp(pegV):'N/A'}, PE TTM: ${dp(s(m.peBasicExclExtraTTM))}
+- Legends approving (${approvedCount}/8): ${approvedNames}
+- Legends rejecting: ${rejectedNames}
+
+Write exactly 3 sentences: (1) core fundamental thesis, (2) biggest risk or concern, (3) one-sentence macro tailwind verdict for the ${profile.finnhubIndustry||'N/A'} sector. Direct, professional, no fluff.`;
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514', max_tokens: 220,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const data = await res.json();
+      document.getElementById('aiSummaryText').textContent = data.content?.[0]?.text || 'Assessment unavailable.';
+    } catch(e) {
+      document.getElementById('aiSummaryText').textContent = 'AI assessment failed — check API key.';
+    }
+  }
+
+  // ── CHART UPLOAD ──────────────────────────────────────────────────────
+  let chartBase64 = null;
+
+  function handleChartUpload(event) {
+    const file = event.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      chartBase64 = e.target.result.split(',')[1];
+      document.getElementById('chartPreviewImg').src = e.target.result;
+      document.getElementById('chartPreviewWrap').classList.add('active');
+      document.getElementById('chartAnalysisResult').classList.remove('active');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  const uploadZone = document.getElementById('uploadZone');
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault(); uploadZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) handleChartUpload({ target: { files: [file] } });
+  });
+
+  async function analyzeChart() {
+    if (!chartBase64) return;
+    if (!currentData.ticker) { alert('Run a stock analysis first.'); return; }
+    const btn = document.getElementById('analyzeChartBtn');
+    btn.textContent = 'Analyzing...'; btn.disabled = true;
+    const key = getClaudeKey();
+    if (!key) { btn.textContent='Analyze Entry Points for All Legends'; btn.disabled=false; return; }
+    const name = currentData.profile?.name || currentData.ticker;
+
+    const prompt = `You are analyzing a TradingView price chart of ${currentData.ticker} (${name}).
+
+Based only on what you observe in this chart, describe the specific entry approach each legend would take — what triggers their entry, where they place the stop, and their initial target logic.
+
+Format as exactly 6 sections, each starting with the name in ALL CAPS followed by a colon:
+
+LIVERMORE:
+O'NEIL:
+MINERVINI:
+ZANGER:
+WILLIAMS:
+DRUCKENMILLER:
+
+2-3 sentences each. Reference specific chart features you observe directly.`;
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: chartBase64 } },
+            { type: 'text', text: prompt }
+          ]}]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || '';
+      const legendNames = ['LIVERMORE',"O'NEIL",'MINERVINI','ZANGER','WILLIAMS','DRUCKENMILLER'];
+      let html = '';
+      legendNames.forEach((lname, i) => {
+        const nextPattern = legendNames.slice(i+1).map(n => n.replace(/'/g,"'?") + ':').join('|');
+        const re = new RegExp(lname.replace(/'/g,"'") + ':\\s*([\\s\\S]*?)(?=' + (nextPattern||'$') + ')', 'i');
+        const match = text.match(re);
+        const content = match ? match[1].trim() : 'Analysis not available.';
+        html += `<div class="entry-legend-card" style="animation-delay:${i*0.08}s">
+          <div class="entry-legend-name">${lname}</div>
+          <div class="entry-legend-text">${content}</div>
+        </div>`;
+      });
+      document.getElementById('chartAnalysisResult').innerHTML = html;
+      document.getElementById('chartAnalysisResult').classList.add('active');
+    } catch(e) {
+      document.getElementById('chartAnalysisResult').innerHTML = `<div class="error-bar active">Chart analysis failed: ${e.message}</div>`;
+      document.getElementById('chartAnalysisResult').classList.add('active');
+    }
+    btn.textContent = 'Analyze Entry Points for All Legends'; btn.disabled = false;
+  }
+
+  // ── KEYBOARD + INIT ───────────────────────────────────────────────────
+  document.getElementById('tickerInput').addEventListener('keydown', e => { if(e.key==='Enter') runAnalysis(); });
+  renderWatchlist();
+</script>
+</body>
+</html>
