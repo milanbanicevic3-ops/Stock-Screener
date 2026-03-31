@@ -1128,7 +1128,7 @@
       if (!profile || !profile.name) throw new Error(`Ticker not found: ${ticker}. Check the symbol is a valid US stock.`);
       if (!quote || !quote.c) throw new Error(`No quote data returned for ${ticker}.`);
 
-      // Alpha Vantage — daily adjusted prices
+      // Alpha Vantage — last 100 days of daily prices (free tier: compact only)
       // Cache in localStorage keyed by ticker+date to avoid burning daily calls on re-analysis
       const today = new Date().toISOString().slice(0,10);
       const cacheKey = `omc_av_${ticker}_${today}`;
@@ -1141,7 +1141,7 @@
         volumes = parsed.volumes;
         console.log(`Using cached AV price data for ${ticker} (${today})`);
       } else {
-        const avData = await av({ function: 'TIME_SERIES_DAILY', symbol: ticker, outputsize: 'full' });
+        const avData = await av({ function: 'TIME_SERIES_DAILY', symbol: ticker, outputsize: 'compact' });
 
         if (avData['Error Message']) throw new Error(`Alpha Vantage: ticker ${ticker} not found.`);
 
@@ -1197,21 +1197,21 @@
 
   // ── PRICE HISTORY CALCULATIONS (from Alpha Vantage closes array, newest→oldest) ──
   function calcMA(closes) {
-    // closes[0] = most recent, closes[199] = 200 days ago
-    if (closes.length < 200) return null;
-    const cur    = closes[0];
-    const ma50   = avgArr(closes.slice(0, 50));
-    const ma150  = avgArr(closes.slice(0, 150));
-    const ma200  = avgArr(closes.slice(0, 200));
-    // 200MA trend: compare to where it was 30 trading days ago
+    // closes[0] = most recent (compact = ~100 days)
+    if (closes.length < 50) return null;
+    const cur  = closes[0];
+    const ma50 = avgArr(closes.slice(0, 50));
+    // 150MA and 200MA only if we have enough data
+    const ma150 = closes.length >= 150 ? avgArr(closes.slice(0, 150)) : null;
+    const ma200 = closes.length >= 200 ? avgArr(closes.slice(0, 200)) : null;
     const ma200old = closes.length >= 230 ? avgArr(closes.slice(30, 230)) : null;
     return {
       cur, ma50, ma150, ma200,
       above50:  cur > ma50,
-      above150: cur > ma150,
-      above200: cur > ma200,
-      ma150aboveMa200: ma150 > ma200,
-      ma200trending: ma200old ? ma200 > ma200old : null
+      above150: ma150 ? cur > ma150 : null,
+      above200: ma200 ? cur > ma200 : null,
+      ma150aboveMa200: (ma150 && ma200) ? ma150 > ma200 : null,
+      ma200trending: (ma200 && ma200old) ? ma200 > ma200old : null
     };
   }
 
