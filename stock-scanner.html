@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0d1117;
+    --bg2:      #111820;
+    --bg3:      #161e28;
+    --bg4:      #1c2733;
+    --border:   #1e2d3d;
+    --border2:  #243447;
+    --text:     #cdd9e5;
+    --text2:    #8b98a5;
+    --text3:    #4d6273;
+    --blue:     #2d7dd2;
+    --blue2:    #3d8fe4;
+    --cyan:     #00d4ff;
+    --cyan-dim: rgba(0,212,255,0.08);
+    --green:    #26a641;
+    --green2:   #2ea043;
+    --green-dim:rgba(38,166,65,0.10);
+    --amber:    #f0a500;
+    --amber-dim:rgba(240,165,0,0.10);
+    --red:      #e5534b;
+    --red-dim:  rgba(229,83,75,0.10);
+    --mono:     'IBM Plex Mono', monospace;
+    --sans:     'IBM Plex Sans', sans-serif;
+    --cond:     'IBM Plex Sans Condensed', sans-serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* SCANLINE TEXTURE */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* TOP BAR */
+  .topbar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .app-id {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+
+  .topbar-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border2);
+  }
+
+  .topbar-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .clock {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* MAIN LAYOUT */
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    min-height: calc(100vh - 48px);
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .sidebar-section-title {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2.5px;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* UPLOAD ZONE */
+  .upload-zone {
+    border: 1px dashed var(--border2);
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    background: var(--bg3);
+  }
+
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--cyan);
+    background: var(--cyan-dim);
+  }
+
+  .upload-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: var(--text3);
+  }
+
+  .upload-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    line-height: 1.6;
+  }
+
+  .upload-text span {
+    color: var(--cyan);
+  }
+
+  /* OR DIVIDER */
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0;
+  }
+  .or-divider::before, .or-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .or-divider span {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 2px;
+  }
+
+  /* TICKER TEXTAREA */
+  .ticker-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 10px 12px;
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+    letter-spacing: 0.5px;
+    transition: border-color 0.2s;
+    line-height: 1.8;
+  }
+
+  .ticker-input:focus { border-color: var(--blue); }
+  .ticker-input::placeholder { color: var(--text3); }
+
+  /* SIGNAL FILTERS */
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .filter-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 6px 8px;
+    transition: background 0.15s;
+  }
+
+  .filter-item:hover { background: var(--bg3); }
+
+  .filter-checkbox {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .filter-checkbox.checked {
+    background: var(--blue);
+    border-color: var(--blue);
+  }
+
+  .filter-checkbox.checked::after {
+    content: '✓';
+    font-size: 9px;
+    color: white;
+    font-weight: 600;
+  }
+
+  .filter-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    letter-spacing: 0.5px;
+  }
+
+  /* MIN SIGNALS SELECTOR */
+  .min-signals-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+  }
+
+  .min-signals-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  .min-signals-btns {
+    display: flex;
+    gap: 4px;
+  }
+
+  .min-btn {
+    width: 28px;
+    height: 24px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .min-btn.active {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: white;
+  }
+
+  /* SCAN BUTTON */
+  .scan-btn {
+    width: 100%;
+    background: var(--blue);
+    border: none;
+    color: white;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    padding: 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scan-btn:hover { background: var(--blue2); }
+  .scan-btn:active { transform: scale(0.99); }
+  .scan-btn:disabled { background: var(--bg4); color: var(--text3); cursor: not-allowed; }
+
+  .scan-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.4s;
+  }
+
+  .scan-btn:hover::before { transform: translateX(100%); }
+
+  /* PROGRESS */
+  .progress-wrap {
+    display: none;
+  }
+  .progress-wrap.active { display: block; }
+
+  .progress-bar-track {
+    height: 2px;
+    background: var(--border);
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue), var(--cyan));
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  .progress-text {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* STATS ROW */
+  .sidebar-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-cell {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .stat-value.cyan { color: var(--cyan); }
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+
+  /* ERROR */
+  .error-bar {
+    display: none;
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    color: var(--red);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 10px 12px;
+    letter-spacing: 0.5px;
+    line-height: 1.5;
+  }
+  .error-bar.active { display: block; }
+
+  /* MAIN CONTENT */
+  .content {
+    padding: 24px 32px;
+    overflow-y: auto;
+  }
+
+  /* CONTENT HEADER */
+  .content-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .content-title {
+    font-family: var(--cond);
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+
+  .content-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    gap: 16px;
+    color: var(--text3);
+  }
+
+  .empty-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    opacity: 0.15;
+    margin-bottom: 24px;
+  }
+
+  .empty-cell {
+    height: 32px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+  }
+
+  .empty-cell.lit {
+    background: var(--blue);
+    opacity: 0.3;
+  }
+
+  .empty-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+
+  .empty-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    opacity: 0.6;
+  }
+
+  /* RESULTS TABLE */
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .results-table thead tr {
+    background: var(--bg3);
+    border-bottom: 2px solid var(--border2);
+  }
+
+  .results-table th {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text3);
+    text-transform: uppercase;
+    padding: 10px 14px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s;
+    user-select: none;
+  }
+
+  .results-table th:hover { color: var(--text); }
+  .results-table th.sorted { color: var(--cyan); }
+
+  .results-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    animation: rowIn 0.3s ease both;
+  }
+
+  .results-table tbody tr:hover { background: var(--bg3); }
+
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .results-table td {
+    padding: 10px 14px;
+    vertical-align: middle;
+  }
+
+  /* TICKER CELL */
+  .td-ticker {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cyan);
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  .td-name {
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 2px;
+    font-family: var(--sans);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* PRICE CELL */
+  .td-price {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .td-chg {
+    font-family: var(--mono);
+    font-size: 10px;
+    margin-top: 2px;
+  }
+  .td-chg.up { color: var(--green); }
+  .td-chg.dn { color: var(--red); }
+
+  /* SIGNAL BADGES */
+  .signals-cell {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .signal-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 7px;
+    border: 1px solid;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+
+  .signal-badge.breakout {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    background: var(--cyan-dim);
+  }
+
+  .signal-badge.volume {
+    color: var(--amber);
+    border-color: var(--amber);
+    background: var(--amber-dim);
+  }
+
+  .signal-badge.trend {
+    color: var(--green);
+    border-color: var(--green);
+    background: var(--green-dim);
+  }
+
+  /* STRENGTH METER */
+  .strength-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .strength-bars {
+    display: flex;
+    gap: 3px;
+  }
+
+  .strength-bar {
+    width: 8px;
+    height: 20px;
+    background: var(--border2);
+  }
+
+  .strength-bar.active-3 { background: var(--cyan); }
+  .strength-bar.active-2 { background: var(--blue); }
+  .strength-bar.active-1 { background: var(--amber); }
+
+  .strength-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  /* KEY METRICS CELLS */
+  .td-metric {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+
+  .td-metric .pos { color: var(--green); }
+  .td-metric .neg { color: var(--red); }
+
+  /* AI ASSESSMENT */
+  .td-ai {
+    font-size: 11px;
+    color: var(--text2);
+    font-family: var(--sans);
+    font-weight: 300;
+    max-width: 280px;
+    line-height: 1.5;
+  }
+
+  .ai-loading {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ai-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--blue);
+    animation: aiPulse 1.2s ease-in-out infinite;
+  }
+
+  .ai-dot:nth-child(2) { animation-delay: 0.2s; }
+  .ai-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes aiPulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+
+  /* SECTOR TAG */
+  .sector-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text3);
+    border: 1px solid var(--border2);
+    padding: 2px 6px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* SORT INDICATOR */
+  th.sorted::after { content: ' ↓'; }
+  th.sorted.asc::after { content: ' ↑'; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+  /* CLAUDE KEY MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    padding: 32px;
+    width: 420px;
+    max-width: 90vw;
+  }
+
+  .modal-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .modal-body {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 20px;
+    line-height: 1.6;
+    font-family: var(--sans);
+  }
+
+  .modal-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 12px;
+    outline: none;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+
+  .modal-input:focus { border-color: var(--blue); }
+
+  .modal-btn {
+    background: var(--blue);
+    border: none;
+    color: white;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 10px 24px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.2s;
+  }
+
+  .modal-btn:hover { background: var(--blue2); }
+
+  /* RESPONSIVE */
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+    .content { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="app-id">SCANNER</div>
+    <div class="topbar-divider"></div>
+    <div class="topbar-label">Equity Momentum · Daily &amp; Weekly</div>
+  </div>
+  <div class="topbar-right">
+    <div class="status-dot"></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- INPUT -->
+    <div>
+      <div class="sidebar-section-title">Input · Ticker List</div>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="csvUpload" accept=".csv,.txt" onchange="handleFileUpload(event)" />
+        <div class="upload-icon">⬆</div>
+        <div class="upload-text">Drop CSV / TXT file<br><span>or click to browse</span></div>
+      </div>
+      <div class="or-divider"><span>OR</span></div>
+      <textarea class="ticker-input" id="tickerTextarea"
+        placeholder="AAPL NVDA MSFT TSLA&#10;One per line or space-separated"></textarea>
+    </div>
+
+    <!-- SIGNAL FILTERS -->
+    <div>
+      <div class="sidebar-section-title">Signal Filters</div>
+      <div class="filter-group">
+        <div class="filter-item" onclick="toggleFilter('breakout')">
+          <div class="filter-checkbox checked" id="filter-breakout"></div>
+          <div class="filter-label">Breakout (20D high)</div>
+        </div>
+        <div class="filter-item" onclick="toggleFilter('volume')">
+          <div class="filter-checkbox checked" id="filter-volume"></div>
+          <div class="filter-label">Volume expansion (1.3x)</div>
+        </div>
+        <div class="filter-item" onclick="toggleFilter('trend')">
+          <div class="filter-checkbox checked" id="filter-trend"></div>
+          <div class="filter-label">Above 50-day MA</div>
+        </div>
+      </div>
+      <div class="min-signals-row" style="margin-top:12px;">
+        <div class="min-signals-label">Min signals to qualify</div>
+        <div class="min-signals-btns">
+          <button class="min-btn" id="minbtn-1" onclick="setMinSignals(1)">1</button>
+          <button class="min-btn active" id="minbtn-2" onclick="setMinSignals(2)">2</button>
+          <button class="min-btn" id="minbtn-3" onclick="setMinSignals(3)">3</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCAN BUTTON -->
+    <div>
+      <button class="scan-btn" id="scanBtn" onclick="runScan()">▶ Run Scan</button>
+      <div class="progress-wrap" id="progressWrap" style="margin-top:12px;">
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">Initializing...</div>
+      </div>
+      <div class="error-bar" id="errorBar" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- STATS -->
+    <div>
+      <div class="sidebar-section-title">Session Stats</div>
+      <div class="sidebar-stats">
+        <div class="stat-cell">
+          <div class="stat-label">Scanned</div>
+          <div class="stat-value" id="statScanned">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Qualified</div>
+          <div class="stat-value cyan" id="statQualified">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">3 Signals</div>
+          <div class="stat-value green" id="statStrong">—</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">2 Signals</div>
+          <div class="stat-value amber" id="statWatch">—</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content" id="content">
+    <div class="content-header">
+      <div class="content-title">Scan Results</div>
+      <div class="content-meta" id="contentMeta">No scan run yet</div>
+    </div>
+
+    <!-- EMPTY STATE -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-grid">
+        <div class="empty-cell lit"></div><div class="empty-cell"></div><div class="empty-cell lit"></div>
+        <div class="empty-cell"></div><div class="empty-cell lit"></div><div class="empty-cell"></div>
+        <div class="empty-cell lit"></div><div class="empty-cell"></div>
+        <div class="empty-cell"></div><div class="empty-cell lit"></div><div class="empty-cell"></div>
+        <div class="empty-cell lit"></div><div class="empty-cell"></div><div class="empty-cell lit"></div>
+        <div class="empty-cell"></div><div class="empty-cell lit"></div>
+      </div>
+      <div class="empty-title">Awaiting Input</div>
+      <div class="empty-sub">Upload a ticker list or paste symbols to begin</div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="resultsContainer" style="display:none;">
+      <table class="results-table" id="resultsTable">
+        <thead>
+          <tr>
+            <th onclick="sortTable('ticker')">Ticker</th>
+            <th onclick="sortTable('price')">Price</th>
+            <th>Signals</th>
+            <th onclick="sortTable('strength')" class="sorted" id="th-strength">Strength</th>
+            <th onclick="sortTable('chg')">1D Chg</th>
+            <th onclick="sortTable('rs3m')">3M RS</th>
+            <th>Sector</th>
+            <th>AI Assessment</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- CLAUDE KEY MODAL -->
+<div class="modal-overlay" id="claudeModal">
+  <div class="modal">
+    <div class="modal-title">Anthropic API Key Required</div>
+    <div class="modal-body">
+      Enter your Anthropic API key to enable AI fundamental assessments for qualifying stocks.
+      Your key is stored locally in your browser only.
+    </div>
+    <input type="password" class="modal-input" id="claudeKeyInput" placeholder="sk-ant-..." />
+    <button class="modal-btn" onclick="saveClaudeKey()">Save &amp; Continue</button>
+  </div>
+</div>
+
+<script>
+  const FINNHUB_KEY  = 'd71rktpr01qpd2791f7gd71rktpr01qpd2791f80';
+  const AV_KEYS      = ['V6L8O4J8SVT9YYFH', '1J9QQUDCPTIXC9IA'];
+  const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+  const AV_BASE      = 'https://www.alphavantage.co/query';
+  const CLAUDE_KEY_STORAGE = 'scanner_claude_key';
+
+  // ── CLOCK ─────────────────────────────────────────────────────────────
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent =
+      now.toUTCString().slice(17, 25) + ' UTC';
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // ── CLAUDE KEY ────────────────────────────────────────────────────────
+  function getClaudeKey() { return localStorage.getItem(CLAUDE_KEY_STORAGE); }
+
+  function saveClaudeKey() {
+    const k = document.getElementById('claudeKeyInput').value.trim();
+    if (!k) return;
+    localStorage.setItem(CLAUDE_KEY_STORAGE, k);
+    document.getElementById('claudeModal').classList.remove('active');
+    runScan();
+  }
+
+  // ── FILTERS ───────────────────────────────────────────────────────────
+  const filters = { breakout: true, volume: true, trend: true };
+  let minSignals = 2;
+
+  function toggleFilter(name) {
+    filters[name] = !filters[name];
+    document.getElementById('filter-' + name).classList.toggle('checked', filters[name]);
+  }
+
+  function setMinSignals(n) {
+    minSignals = n;
+    [1,2,3].forEach(i => {
+      document.getElementById('minbtn-' + i).classList.toggle('active', i === n);
+    });
+  }
+
+  // ── FILE UPLOAD ───────────────────────────────────────────────────────
+  const uploadZone = document.getElementById('uploadZone');
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault(); uploadZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  });
+
+  function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (file) processFile(file);
+  }
+
+  function processFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target.result;
+      // Extract tickers — handle CSV with commas, newlines, spaces
+      const tickers = text
+        .split(/[\n\r,;\t]+/)
+        .map(t => t.trim().toUpperCase().replace(/[^A-Z.]/g, ''))
+        .filter(t => t.length >= 1 && t.length <= 5 && /^[A-Z]/.test(t));
+      document.getElementById('tickerTextarea').value = [...new Set(tickers)].join('\n');
+    };
+    reader.readAsText(file);
+  }
+
+  // ── PARSE TICKERS ─────────────────────────────────────────────────────
+  function parseTickers() {
+    const raw = document.getElementById('tickerTextarea').value;
+    return [...new Set(
+      raw.split(/[\s,;\n\r]+/)
+        .map(t => t.trim().toUpperCase().replace(/[^A-Z.]/g, ''))
+        .filter(t => t.length >= 1 && t.length <= 5 && /^[A-Z]/.test(t))
+    )];
+  }
+
+  // ── ERROR ─────────────────────────────────────────────────────────────
+  function showError(msg) {
+    const el = document.getElementById('errorBar');
+    el.textContent = '⚠ ' + msg;
+    el.classList.add('active');
+  }
+  function clearError() { document.getElementById('errorBar').classList.remove('active'); }
+
+  // ── FETCH HELPERS ─────────────────────────────────────────────────────
+  async function fh(path) {
+    const sep = path.includes('?') ? '&' : '?';
+    const r = await fetch(`${FINNHUB_BASE}${path}${sep}token=${FINNHUB_KEY}`);
+    if (!r.ok) throw new Error(`Finnhub ${r.status}`);
+    return r.json();
+  }
+
+  async function avFetch(params) {
+    const qs = Object.entries(params).map(([k,v]) => `${k}=${v}`).join('&');
+    let lastErr = null;
+    for (const key of AV_KEYS) {
+      try {
+        const r = await fetch(`${AV_BASE}?${qs}&apikey=${key}`);
+        if (!r.ok) { lastErr = `AV HTTP ${r.status}`; continue; }
+        const data = await r.json();
+        if (!data['Time Series (Daily)'] && (data['Note'] || data['Information'])) {
+          lastErr = 'rate_limit'; continue;
+        }
+        return data;
+      } catch(e) { lastErr = e.message; }
+    }
+    if (lastErr === 'rate_limit') throw new Error('AV_RATE_LIMIT');
+    throw new Error(lastErr || 'AV fetch failed');
+  }
+
+  function s(v, fb=null) {
+    return (v===undefined||v===null||v===''||isNaN(Number(v))) ? fb : Number(v);
+  }
+  function avgArr(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+
+  // ── FETCH SINGLE TICKER DATA ──────────────────────────────────────────
+  async function fetchTicker(ticker) {
+    // Finnhub: quote + profile + metrics in parallel
+    const [quote, profile, metrics] = await Promise.all([
+      fh(`/quote?symbol=${ticker}`),
+      fh(`/stock/profile2?symbol=${ticker}`),
+      fh(`/stock/metric?symbol=${ticker}&metric=all`)
+    ]);
+
+    if (!profile || !profile.name) return null;
+    if (!quote || !s(quote.c)) return null;
+
+    // AV price history with cache
+    const today = new Date().toISOString().slice(0,10);
+    const cacheKey = `scanner_av_${ticker}_${today}`;
+    let closes = [], volumes = [];
+
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const p = JSON.parse(cached);
+      closes = p.closes; volumes = p.volumes;
+    } else {
+      try {
+        const avData = await avFetch({ function: 'TIME_SERIES_DAILY', symbol: ticker, outputsize: 'compact' });
+        const ts = avData['Time Series (Daily)'];
+        if (ts) {
+          const dates = Object.keys(ts).sort((a,b) => b.localeCompare(a));
+          closes  = dates.map(d => parseFloat(ts[d]['4. close']));
+          volumes = dates.map(d => parseFloat(ts[d]['5. volume']));
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({ closes, volumes }));
+            Object.keys(localStorage)
+              .filter(k => k.startsWith('scanner_av_') && !k.includes(today))
+              .forEach(k => localStorage.removeItem(k));
+          } catch(e) {}
+        }
+      } catch(e) {
+        if (e.message === 'AV_RATE_LIMIT') throw e;
+        // AV failed but not rate limit — continue with just Finnhub data
+      }
+    }
+
+    return { ticker, quote, profile, metrics, closes, volumes };
+  }
+
+  // ── SIGNAL CALCULATION ────────────────────────────────────────────────
+  function calcSignals(d) {
+    const { quote, metrics, closes, volumes } = d;
+    const m = metrics?.metric || {};
+    const cur = s(quote.c);
+    const signals = [];
+
+    // 1. BREAKOUT — price at or near 20-day high
+    if (closes.length >= 20) {
+      const high20 = Math.max(...closes.slice(0, 20));
+      // Within 1% of 20-day high counts as breakout
+      if (cur >= high20 * 0.99) signals.push('breakout');
+    } else {
+      // Fallback: within top 10% of 52W range
+      const hi52 = s(m['52WeekHigh']);
+      const lo52 = s(m['52WeekLow']);
+      if (hi52 && lo52 && cur >= hi52 * 0.95) signals.push('breakout');
+    }
+
+    // 2. VOLUME EXPANSION — 10d avg vs 30d avg
+    if (volumes.length >= 30) {
+      const vol10 = avgArr(volumes.slice(0, 10));
+      const vol30 = avgArr(volumes.slice(0, 30));
+      if (vol30 > 0 && vol10 / vol30 >= 1.3) signals.push('volume');
+    }
+
+    // 3. TREND — price above 50MA
+    if (closes.length >= 50) {
+      const ma50 = avgArr(closes.slice(0, 50));
+      if (cur > ma50) signals.push('trend');
+    } else {
+      // Fallback: price above 50-day average from Finnhub
+      const ma50fh = s(m['50DayMovingAverage'] || m['50DMA']);
+      if (ma50fh && cur > ma50fh) signals.push('trend');
+    }
+
+    return signals;
+  }
+
+  function calcRS(closes, period) {
+    if (closes.length < period + 1) return null;
+    const prev = closes[period];
+    const cur  = closes[0];
+    if (!prev || prev === 0) return null;
+    return (cur - prev) / prev;
+  }
+
+  // ── SORT ──────────────────────────────────────────────────────────────
+  let sortKey = 'strength', sortAsc = false;
+  let allResults = [];
+
+  function sortTable(key) {
+    if (sortKey === key) sortAsc = !sortAsc;
+    else { sortKey = key; sortAsc = false; }
+    document.querySelectorAll('.results-table th').forEach(th => {
+      th.classList.remove('sorted','asc');
+    });
+    const thMap = { ticker:'ticker', price:'price', strength:'th-strength', chg:'chg', rs3m:'rs3m' };
+    const thEl = document.getElementById('th-' + key) ||
+                 [...document.querySelectorAll('.results-table th')].find(t => t.textContent.toLowerCase().includes(key));
+    if (thEl) { thEl.classList.add('sorted'); if (sortAsc) thEl.classList.add('asc'); }
+    renderResults(allResults);
+  }
+
+  // ── RENDER RESULTS ────────────────────────────────────────────────────
+  function renderResults(results) {
+    const sorted = [...results].sort((a, b) => {
+      let va, vb;
+      if (sortKey === 'ticker')   { va = a.ticker; vb = b.ticker; return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
+      if (sortKey === 'price')    { va = a.price; vb = b.price; }
+      if (sortKey === 'strength') { va = a.strength; vb = b.strength; }
+      if (sortKey === 'chg')      { va = a.chg; vb = b.chg; }
+      if (sortKey === 'rs3m')     { va = a.rs3m ?? -999; vb = b.rs3m ?? -999; }
+      va = va ?? -999; vb = vb ?? -999;
+      return sortAsc ? va - vb : vb - va;
+    });
+
+    const tbody = document.getElementById('resultsBody');
+    tbody.innerHTML = sorted.map((r, i) => {
+      const chgCls = r.chg >= 0 ? 'up' : 'dn';
+      const chgSign = r.chg >= 0 ? '+' : '';
+      const strCls = r.strength === 3 ? 'active-3' : r.strength === 2 ? 'active-2' : 'active-1';
+      const bars = [1,2,3].map(n =>
+        `<div class="strength-bar ${n <= r.strength ? strCls : ''}"></div>`
+      ).join('');
+
+      const sigBadges = r.signals.map(sig =>
+        `<span class="signal-badge ${sig}">${sig === 'breakout' ? '↗ BRK' : sig === 'volume' ? '⬆ VOL' : '▲ TRD'}</span>`
+      ).join('');
+
+      const rs3mStr = r.rs3m !== null
+        ? `<span class="${r.rs3m >= 0 ? 'pos' : 'neg'}">${r.rs3m >= 0 ? '+' : ''}${(r.rs3m*100).toFixed(1)}%</span>`
+        : '—';
+
+      const aiHtml = r.aiText
+        ? `<span>${r.aiText}</span>`
+        : `<span class="ai-loading"><span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span></span>`;
+
+      return `<tr style="animation-delay:${Math.min(i*0.04, 0.8)}s">
+        <td>
+          <div class="td-ticker">${r.ticker}</div>
+          <div class="td-name">${r.name}</div>
+        </td>
+        <td>
+          <div class="td-price">$${r.price.toFixed(2)}</div>
+          <div class="td-chg ${chgCls}">${chgSign}${r.chg.toFixed(2)}%</div>
+        </td>
+        <td><div class="signals-cell">${sigBadges}</div></td>
+        <td>
+          <div class="strength-cell">
+            <div class="strength-bars">${bars}</div>
+            <span class="strength-num">${r.strength}/3</span>
+          </div>
+        </td>
+        <td class="td-metric">${rs3mStr}</td>
+        <td class="td-metric">${rs3mStr}</td>
+        <td><span class="sector-tag">${r.sector}</span></td>
+        <td class="td-ai" id="ai-${r.ticker}">${aiHtml}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── AI ASSESSMENT ─────────────────────────────────────────────────────
+  async function generateAI(result) {
+    const key = getClaudeKey();
+    if (!key) return;
+
+    const { ticker, profile, metrics, quote } = result;
+    const m = metrics?.metric || {};
+    const signals = result.signals.join(', ');
+
+    const prompt = `Give a 2-sentence assessment of ${ticker} (${profile.name}, ${profile.finnhubIndustry||'N/A'}) for a swing trader.
+Signals triggered: ${signals}. Price: $${s(quote.c)?.toFixed(2)}, PE: ${s(m.peBasicExclExtraTTM)?.toFixed(1)||'N/A'}, MarketCap: $${((s(profile.marketCapitalization,0))*1e6/1e9).toFixed(1)}B.
+Sentence 1: fundamental quality of this move (is the business actually growing?).
+Sentence 2: one key risk or sector macro context. Be direct, no fluff.`;
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 120,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || '';
+      const el = document.getElementById('ai-' + ticker);
+      if (el) el.innerHTML = `<span>${text}</span>`;
+    } catch(e) {
+      const el = document.getElementById('ai-' + ticker);
+      if (el) el.innerHTML = '<span style="color:var(--text3)">Assessment unavailable</span>';
+    }
+  }
+
+  // ── MAIN SCAN ─────────────────────────────────────────────────────────
+  async function runScan() {
+    const claudeKey = getClaudeKey();
+    if (!claudeKey) {
+      document.getElementById('claudeModal').classList.add('active');
+      return;
+    }
+
+    const tickers = parseTickers();
+    if (tickers.length === 0) {
+      showError('No valid tickers found. Paste ticker symbols or upload a CSV file.');
+      return;
+    }
+
+    clearError();
+    document.getElementById('scanBtn').disabled = true;
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('resultsContainer').style.display = 'none';
+    document.getElementById('progressWrap').classList.add('active');
+
+    allResults = [];
+    let scanned = 0, avLimitHit = false;
+
+    const updateProgress = (msg) => {
+      const pct = Math.round((scanned / tickers.length) * 100);
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressText').textContent = msg;
+    };
+
+    // Process tickers in small batches to respect rate limits
+    const BATCH = 5;
+    for (let i = 0; i < tickers.length; i += BATCH) {
+      const batch = tickers.slice(i, i + BATCH);
+
+      await Promise.all(batch.map(async (ticker) => {
+        try {
+          const data = await fetchTicker(ticker);
+          scanned++;
+          updateProgress(`Scanning ${ticker}... (${scanned}/${tickers.length})`);
+
+          if (!data) return;
+
+          const activeSigNames = Object.entries(filters).filter(([,v])=>v).map(([k])=>k);
+          const signals = calcSignals(data).filter(sig => activeSigNames.includes(sig));
+
+          if (signals.length < minSignals) return;
+
+          const rs3m = calcRS(data.closes, 63);
+          const chg  = s(data.quote.dp, 0);
+
+          allResults.push({
+            ticker: data.ticker,
+            name: data.profile.name || ticker,
+            sector: data.profile.finnhubIndustry || 'N/A',
+            price: s(data.quote.c, 0),
+            chg,
+            signals,
+            strength: signals.length,
+            rs3m,
+            aiText: null,
+            // store for AI call
+            _data: data
+          });
+        } catch(e) {
+          if (e.message === 'AV_RATE_LIMIT') avLimitHit = true;
+          scanned++;
+          updateProgress(`Scanning... (${scanned}/${tickers.length})`);
+        }
+      }));
+
+      // Small delay between batches to avoid hammering APIs
+      if (i + BATCH < tickers.length) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
+    // Sort by strength descending
+    allResults.sort((a,b) => b.strength - a.strength || (b.rs3m??-999) - (a.rs3m??-999));
+
+    // Update stats
+    const strong = allResults.filter(r => r.strength === 3).length;
+    const watch  = allResults.filter(r => r.strength === 2).length;
+    document.getElementById('statScanned').textContent = tickers.length;
+    document.getElementById('statQualified').textContent = allResults.length;
+    document.getElementById('statStrong').textContent = strong;
+    document.getElementById('statWatch').textContent = watch;
+
+    // Update header
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('contentMeta').textContent =
+      `${allResults.length} qualifying / ${tickers.length} scanned · ${now}`;
+
+    // Show results
+    document.getElementById('resultsContainer').style.display = 'block';
+    document.getElementById('progressWrap').classList.remove('active');
+    document.getElementById('scanBtn').disabled = false;
+    renderResults(allResults);
+
+    if (avLimitHit) {
+      const resetTime = new Date();
+      resetTime.setUTCHours(24,0,0,0);
+      const h = Math.ceil((resetTime - new Date()) / 3600000);
+      showError(`Alpha Vantage daily limit reached. Some signals may be incomplete. Resets in ~${h}h. Cached results will be used for re-scans today.`);
+    }
+
+    // Fire AI assessments for qualifying stocks (sequentially to avoid rate limits)
+    for (const result of allResults) {
+      await generateAI({ ...result._data, signals: result.signals });
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+
+  // ── KEYBOARD ──────────────────────────────────────────────────────────
+  document.getElementById('tickerTextarea').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.ctrlKey) runScan();
+  });
+
+  // ── INIT ──────────────────────────────────────────────────────────────
+  // Pre-fill example tickers
+  // document.getElementById('tickerTextarea').placeholder already set
+</script>
+</body>
+</html>
