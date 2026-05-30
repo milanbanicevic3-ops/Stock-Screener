@@ -1140,9 +1140,16 @@
     if (ma50 && cur > ma50) signals.push('trend');
 
     // Log first few for debugging
-    if (Math.random() < 0.05) {
-      console.log(d.ticker, 'signals:', signals, 'debug:', debug);
+    // Log all available metric keys for first ticker to identify correct field names
+    if (!window._metricKeysDumped) {
+      window._metricKeysDumped = true;
+      console.log('=== FINNHUB METRIC KEYS for', d.ticker, '===');
+      console.log('All keys:', Object.keys(m).sort().join(', '));
+      console.log('Volume-related:', Object.keys(m).filter(k => k.toLowerCase().includes('volume') || k.toLowerCase().includes('vol')));
+      console.log('MA-related:', Object.keys(m).filter(k => k.toLowerCase().includes('day') || k.toLowerCase().includes('week') || k.toLowerCase().includes('moving')));
+      console.log('Sample values - vol10d:', m['10DayAverageTradingVolume'], 'vol3m:', m['3MonthAverageTradingVolume'], 'ma50:', m['50DayMovingAverage']);
     }
+    console.log(d.ticker, 'signals:', signals, 'debug:', debug);
 
     return signals;
   }
