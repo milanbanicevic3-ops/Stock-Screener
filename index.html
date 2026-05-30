@@ -938,7 +938,7 @@
             <th>Signals</th>
             <th onclick="sortTable('strength')" class="sorted" id="th-strength">Strength</th>
             <th onclick="sortTable('chg')">1D Chg</th>
-            <th onclick="sortTable('rs3m')">3M RS</th>
+            <th onclick="sortTable('rs3m')" id="th-rs3m">3M RS</th>
             <th>Sector</th>
             <th>AI Assessment</th>
           </tr>
@@ -1105,27 +1105,43 @@
     const { quote, metrics } = d;
     const m = metrics?.metric || {};
     const cur = s(quote.c);
-    const signals = [];
-
-    // 1. BREAKOUT — price within 3% of 52-week high
     const hi52 = s(m['52WeekHigh']);
     const lo52 = s(m['52WeekLow']);
-    if (hi52 && cur >= hi52 * 0.97) {
-      signals.push('breakout');
+    const signals = [];
+    const debug = {};
+
+    // 1. BREAKOUT — price within 15% of 52W high (meaningful proximity, not just at ATH)
+    // Also fires if price is in top 25% of its 52W range (showing strength)
+    if (hi52 && lo52) {
+      const rangePos = (cur - lo52) / (hi52 - lo52); // 0=at low, 1=at high
+      const pctFromHigh = (hi52 - cur) / hi52;
+      debug.rangePos = rangePos;
+      debug.pctFromHigh = pctFromHigh;
+      if (pctFromHigh <= 0.15 || rangePos >= 0.75) {
+        signals.push('breakout');
+      }
     }
 
-    // 2. VOLUME EXPANSION — 10-day avg vs 3-month avg (both from Finnhub metrics)
-    // Finnhub returns these in millions of shares
+    // 2. VOLUME EXPANSION — 10-day avg vs 3-month avg
     const vol10d = s(m['10DayAverageTradingVolume']);
     const vol3m  = s(m['3MonthAverageTradingVolume']);
-    if (vol10d && vol3m && vol3m > 0 && (vol10d / vol3m) >= 1.3) {
-      signals.push('volume');
+    debug.vol10d = vol10d;
+    debug.vol3m = vol3m;
+    if (vol10d && vol3m && vol3m > 0) {
+      const ratio = vol10d / vol3m;
+      debug.volRatio = ratio;
+      if (ratio >= 1.2) signals.push('volume');
     }
 
-    // 3. TREND — price above 50-day MA (Finnhub metric)
+    // 3. TREND — price above 50-day MA
     const ma50 = s(m['50DayMovingAverage']);
-    if (ma50 && cur > ma50) {
-      signals.push('trend');
+    debug.ma50 = ma50;
+    debug.cur = cur;
+    if (ma50 && cur > ma50) signals.push('trend');
+
+    // Log first few for debugging
+    if (Math.random() < 0.05) {
+      console.log(d.ticker, 'signals:', signals, 'debug:', debug);
     }
 
     return signals;
@@ -1205,7 +1221,6 @@
             <span class="strength-num">${r.strength}/3</span>
           </div>
         </td>
-        <td class="td-metric">${rs3mStr}</td>
         <td class="td-metric">${rs3mStr}</td>
         <td><span class="sector-tag">${r.sector}</span></td>
         <td class="td-ai" id="ai-${r.ticker}">${aiHtml}</td>
