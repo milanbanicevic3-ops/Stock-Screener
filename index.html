@@ -1086,7 +1086,7 @@
 
   // ── FETCH SINGLE TICKER DATA ──────────────────────────────────────────
   async function fetchTicker(ticker) {
-    // Finnhub: quote + profile + metrics in parallel
+    // Finnhub only — quote + profile + metrics in parallel (all free tier)
     const [quote, profile, metrics] = await Promise.all([
       fh(`/quote?symbol=${ticker}`),
       fh(`/stock/profile2?symbol=${ticker}`),
@@ -1096,84 +1096,46 @@
     if (!profile || !profile.name) return null;
     if (!quote || !s(quote.c)) return null;
 
-    // AV price history with cache
-    const today = new Date().toISOString().slice(0,10);
-    const cacheKey = `scanner_av_${ticker}_${today}`;
-    let closes = [], volumes = [];
-
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      const p = JSON.parse(cached);
-      closes = p.closes; volumes = p.volumes;
-    } else {
-      try {
-        const avData = await avFetch({ function: 'TIME_SERIES_DAILY', symbol: ticker, outputsize: 'compact' });
-        const ts = avData['Time Series (Daily)'];
-        if (ts) {
-          const dates = Object.keys(ts).sort((a,b) => b.localeCompare(a));
-          closes  = dates.map(d => parseFloat(ts[d]['4. close']));
-          volumes = dates.map(d => parseFloat(ts[d]['5. volume']));
-          try {
-            localStorage.setItem(cacheKey, JSON.stringify({ closes, volumes }));
-            Object.keys(localStorage)
-              .filter(k => k.startsWith('scanner_av_') && !k.includes(today))
-              .forEach(k => localStorage.removeItem(k));
-          } catch(e) {}
-        }
-      } catch(e) {
-        if (e.message === 'AV_RATE_LIMIT') throw e;
-        // AV failed but not rate limit — continue with just Finnhub data
-      }
-    }
-
-    return { ticker, quote, profile, metrics, closes, volumes };
+    // No AV calls — all signals derived from Finnhub metrics
+    return { ticker, quote, profile, metrics, closes: [], volumes: [] };
   }
 
   // ── SIGNAL CALCULATION ────────────────────────────────────────────────
   function calcSignals(d) {
-    const { quote, metrics, closes, volumes } = d;
+    const { quote, metrics } = d;
     const m = metrics?.metric || {};
     const cur = s(quote.c);
     const signals = [];
 
-    // 1. BREAKOUT — price at or near 20-day high
-    if (closes.length >= 20) {
-      const high20 = Math.max(...closes.slice(0, 20));
-      // Within 1% of 20-day high counts as breakout
-      if (cur >= high20 * 0.99) signals.push('breakout');
-    } else {
-      // Fallback: within top 10% of 52W range
-      const hi52 = s(m['52WeekHigh']);
-      const lo52 = s(m['52WeekLow']);
-      if (hi52 && lo52 && cur >= hi52 * 0.95) signals.push('breakout');
+    // 1. BREAKOUT — price within 3% of 52-week high
+    const hi52 = s(m['52WeekHigh']);
+    const lo52 = s(m['52WeekLow']);
+    if (hi52 && cur >= hi52 * 0.97) {
+      signals.push('breakout');
     }
 
-    // 2. VOLUME EXPANSION — 10d avg vs 30d avg
-    if (volumes.length >= 30) {
-      const vol10 = avgArr(volumes.slice(0, 10));
-      const vol30 = avgArr(volumes.slice(0, 30));
-      if (vol30 > 0 && vol10 / vol30 >= 1.3) signals.push('volume');
+    // 2. VOLUME EXPANSION — 10-day avg vs 3-month avg (both from Finnhub metrics)
+    // Finnhub returns these in millions of shares
+    const vol10d = s(m['10DayAverageTradingVolume']);
+    const vol3m  = s(m['3MonthAverageTradingVolume']);
+    if (vol10d && vol3m && vol3m > 0 && (vol10d / vol3m) >= 1.3) {
+      signals.push('volume');
     }
 
-    // 3. TREND — price above 50MA
-    if (closes.length >= 50) {
-      const ma50 = avgArr(closes.slice(0, 50));
-      if (cur > ma50) signals.push('trend');
-    } else {
-      // Fallback: price above 50-day average from Finnhub
-      const ma50fh = s(m['50DayMovingAverage'] || m['50DMA']);
-      if (ma50fh && cur > ma50fh) signals.push('trend');
+    // 3. TREND — price above 50-day MA (Finnhub metric)
+    const ma50 = s(m['50DayMovingAverage']);
+    if (ma50 && cur > ma50) {
+      signals.push('trend');
     }
 
     return signals;
   }
 
-  function calcRS(closes, period) {
-    if (closes.length < period + 1) return null;
-    const prev = closes[period];
-    const cur  = closes[0];
-    if (!prev || prev === 0) return null;
-    return (cur - prev) / prev;
+  function calcRS(d) {
+    // 3-month RS from Finnhub: 13-week price return
+    const m = d.metrics?.metric || {};
+    const rs = s(m['13WeekPriceReturnDaily']);
+    return rs !== null ? rs / 100 : null;
   }
 
   // ── SORT ──────────────────────────────────────────────────────────────
@@ -1311,7 +1273,7 @@ Sentence 2: one key risk or sector macro context. Be direct, no fluff.`;
     document.getElementById('progressWrap').classList.add('active');
 
     allResults = [];
-    let scanned = 0, avLimitHit = false;
+    let scanned = 0;
 
     const updateProgress = (msg) => {
       const pct = Math.round((scanned / tickers.length) * 100);
@@ -1337,7 +1299,7 @@ Sentence 2: one key risk or sector macro context. Be direct, no fluff.`;
 
           if (signals.length < minSignals) return;
 
-          const rs3m = calcRS(data.closes, 63);
+          const rs3m = calcRS(data);
           const chg  = s(data.quote.dp, 0);
 
           allResults.push({
@@ -1354,7 +1316,6 @@ Sentence 2: one key risk or sector macro context. Be direct, no fluff.`;
             _data: data
           });
         } catch(e) {
-          if (e.message === 'AV_RATE_LIMIT') avLimitHit = true;
           scanned++;
           updateProgress(`Scanning... (${scanned}/${tickers.length})`);
         }
@@ -1388,12 +1349,7 @@ Sentence 2: one key risk or sector macro context. Be direct, no fluff.`;
     document.getElementById('scanBtn').disabled = false;
     renderResults(allResults);
 
-    if (avLimitHit) {
-      const resetTime = new Date();
-      resetTime.setUTCHours(24,0,0,0);
-      const h = Math.ceil((resetTime - new Date()) / 3600000);
-      showError(`Alpha Vantage daily limit reached. Some signals may be incomplete. Resets in ~${h}h. Cached results will be used for re-scans today.`);
-    }
+
 
     // Fire AI assessments for qualifying stocks (sequentially to avoid rate limits)
     for (const result of allResults) {
